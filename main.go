@@ -12,15 +12,48 @@ import (
 	"github.com/xamino/tox-dynboot"
 )
 
+/*
+NewContext creates a new Context with the given name. It will generate the underlying
+required ToxData and fill the information.
+*/
+func NewContext(name string) (*Context, error) {
+	var context Context
+	context.Name = name
+	// all ok, build and kill tox instance so that keys are generated
+	options := &gotox.Options{
+		true, true,
+		gotox.TOX_PROXY_TYPE_NONE, "127.0.0.1", 5555, 0, 0,
+		3389,
+		gotox.TOX_SAVEDATA_TYPE_NONE, nil}
+	tox, err := gotox.New(options)
+	if err != nil {
+		return nil, err
+	}
+	defer tox.Kill()
+	// print address
+	address, err := tox.SelfGetAddress()
+	if err != nil {
+		return nil, err
+	}
+	context.Address = hex.EncodeToString(address)
+	// store save data
+	savedata, err := tox.GetSavedata()
+	if err != nil {
+		return nil, err
+	}
+	context.ToxData = savedata
+	return &context, nil
+}
+
 // Run starts an echoing Tox client for now.
-func Run() {
+func Run(context Context) {
 	fmt.Println("Starting now...")
 	// set options
 	options := &gotox.Options{
 		true, true,
 		gotox.TOX_PROXY_TYPE_NONE, "127.0.0.1", 5555, 0, 0,
 		3389,
-		gotox.TOX_SAVEDATA_TYPE_NONE, nil}
+		gotox.TOX_SAVEDATA_TYPE_TOX_SAVE, context.ToxData}
 	// create new
 	tox, err := gotox.New(options)
 	if err != nil {
@@ -29,10 +62,9 @@ func Run() {
 	// defer the closing of tox
 	defer tox.Kill()
 	// set name
-	tox.SelfSetName("TestTox")
+	tox.SelfSetName(context.Name)
 	// print address
-	address, _ := tox.SelfGetAddress()
-	fmt.Printf("%s\n", hex.EncodeToString(address))
+	fmt.Printf("Name: %s\nID: %s\n", context.Name, context.Address)
 
 	err = tox.SelfSetStatus(gotox.TOX_USERSTATUS_NONE)
 
@@ -55,14 +87,16 @@ func Run() {
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
-	ticker := time.NewTicker(25 * time.Millisecond)
+	// ticker := time.NewTicker(25 * time.Millisecond)
 
 	for isRunning {
+		temp, _ := tox.IterationInterval()
+		intervall := time.Duration(temp) * time.Millisecond
 		select {
 		case <-c:
 			fmt.Println("Killing")
 			isRunning = false
-		case <-ticker.C:
+		case <-time.Tick(intervall):
 			tox.Iterate()
 		}
 	}
