@@ -120,6 +120,7 @@ func startTox(options *gotox.Options) (*gotox.Tox, error) {
 	// Register our callbacks
 	tox.CallbackFriendRequest(onFriendRequest)
 	tox.CallbackFriendMessage(onFriendMessage)
+	tox.CallbackFriendStatusChanges(onFriendStatus)
 	// Bootstrap
 	toxNode, err := toxdynboot.FetchFirstAlive(100 * time.Millisecond)
 	if err != nil {
@@ -143,4 +144,8 @@ func onFriendMessage(t *gotox.Tox, friendnumber uint32, messagetype gotox.ToxMes
 	} else {
 		fmt.Printf("New action from %d : %s\n", friendnumber, message)
 	}
+}
+
+func onFriendStatus(tox *gotox.Tox, friendnumber uint32, userstatus gotox.ToxUserStatus) {
+	fmt.Printf("Status of %d is %T\n", friendnumber, userstatus)
 }
