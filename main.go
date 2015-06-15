@@ -37,7 +37,7 @@ func (context *Context) Run() error {
 			}
 		}
 	}
-	// make sure to resafe incase something happened
+	// make sure to resafe incase something happened (new friends)
 	context.Store()
 	return nil
 }

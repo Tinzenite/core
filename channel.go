@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,7 +22,7 @@ type Channel struct {
 }
 
 var wg sync.WaitGroup
-var running bool
+var stop chan bool
 
 /*
 CreateChannel creates and starts a new tox channel that continously runs in the background
@@ -71,8 +72,9 @@ func CreateChannel(context *Context, toxdata []byte) (*Channel, error) {
 		return nil, err
 	}
 	log.Println("Created channel...")
+	// now to run it:
 	wg.Add(1)
-	running = true
+	stop = make(chan bool, 1)
 	go channel.run()
 	return channel, nil
 }
@@ -84,20 +86,66 @@ Close shuts down the channel.
 */
 func (channel *Channel) Close() {
 	log.Println("Closing channel...")
-	running = false
+	// send stop signal
+	stop <- false
+	// wait for it to close
 	wg.Wait()
+	// kill tox
 	channel.tox.Kill()
 	log.Println("Closed.")
 }
 
+/*
+Address of the Tox instance.
+*/
+func (channel *Channel) Address() (string, error) {
+	address, err := channel.tox.SelfGetAddress()
+	if err != nil {
+		return "", err
+	}
+	return strings.ToUpper(hex.EncodeToString(address)), nil
+}
+
+/*
+Send a message to the given peer address.
+*/
+func (channel *Channel) Send(address, message string) error {
+	key, err := hex.DecodeString(address)
+	if err != nil {
+		return err
+	}
+	id, err := channel.tox.FriendByPublicKey(key)
+	if err != nil {
+		return err
+	}
+	// returns message ID but we currently don't use it
+	_, err = channel.tox.FriendSendMessage(id, gotox.TOX_MESSAGE_TYPE_NORMAL, message)
+	return err
+}
+
 // --- private methods here ---
 
+/*
+run is the background go routine method that keeps the Tox instance iterating
+until Close() is called.
+*/
 func (channel *Channel) run() {
-	for running {
-		time.Sleep(1 * time.Second)
-		log.Println("Tick")
-	}
-	wg.Done()
+	for {
+		temp, _ := channel.tox.IterationInterval()
+		intervall := time.Duration(temp) * time.Millisecond
+		select {
+		case <-stop:
+			wg.Done()
+			return
+		case <-time.Tick(intervall):
+			err := channel.tox.Iterate()
+			if err != nil {
+				// TODO what do we do here? Can we cleanly close the channel and
+				// catch the error further up?
+				panic(err)
+			}
+		} // select
+	} // for
 }
 
 func (channel *Channel) onFriendRequest(t *gotox.Tox, publicKey []byte, message string) {
