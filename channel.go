@@ -18,7 +18,16 @@ Channel is a wrapper of the gotox wrapper that creates and manages the underlyin
 instance.
 */
 type Channel struct {
-	tox *gotox.Tox
+	tox      *gotox.Tox
+	callback *ChannelCallback
+}
+
+/*
+ChannelCallback contains the methods that are called when things happen.
+*/
+type ChannelCallback interface {
+	tyonNewConnection()
+	onPeerMessage()
 }
 
 var wg sync.WaitGroup
@@ -28,11 +37,11 @@ var stop chan bool
 CreateChannel creates and starts a new tox channel that continously runs in the background
 until this object is destroyed.
 */
-func CreateChannel(context *Context, toxdata []byte) (*Channel, error) {
-	if context == nil {
-		return nil, errors.New("CreateChannel called with nil context!")
+func CreateChannel(name string /*callback *ChannelCallback,*/, toxdata []byte) (*Channel, error) {
+	if name == "" {
+		return nil, errors.New("CreateChannel called with no name!")
 	}
-	var channel = &Channel{nil}
+	var channel = &Channel{nil, nil}
 	var options *gotox.Options
 	var err error
 
@@ -54,14 +63,13 @@ func CreateChannel(context *Context, toxdata []byte) (*Channel, error) {
 		return nil, err
 	}
 	if toxdata == nil {
-		channel.tox.SelfSetName(context.Name)
-		channel.tox.SelfSetStatusMessage("Robot")
+		channel.tox.SelfSetName(name)
+		channel.tox.SelfSetStatusMessage("Tin Peer")
 	}
 	err = channel.tox.SelfSetStatus(gotox.TOX_USERSTATUS_NONE)
 	// Register our callbacks
 	channel.tox.CallbackFriendRequest(channel.onFriendRequest)
 	channel.tox.CallbackFriendMessage(channel.onFriendMessage)
-	channel.tox.CallbackFriendStatusChanges(channel.onFriendStatus)
 	// Bootstrap
 	toxNode, err := toxdynboot.FetchFirstAlive(100 * time.Millisecond)
 	if err != nil {
@@ -72,6 +80,8 @@ func CreateChannel(context *Context, toxdata []byte) (*Channel, error) {
 		return nil, err
 	}
 	log.Println("Created channel...")
+	// register callbacks
+	// channel.callback = callback
 	// now to run it:
 	wg.Add(1)
 	stop = make(chan bool, 1)
@@ -104,6 +114,14 @@ func (channel *Channel) Address() (string, error) {
 		return "", err
 	}
 	return strings.ToUpper(hex.EncodeToString(address)), nil
+}
+
+/*
+ToxData returns the underlying current representation of the tox data. Can be
+used to store a Tox instance to disk.
+*/
+func (channel *Channel) ToxData() ([]byte, error) {
+	return channel.tox.GetSavedata()
 }
 
 /*
@@ -152,6 +170,7 @@ func (channel *Channel) onFriendRequest(t *gotox.Tox, publicKey []byte, message 
 	fmt.Printf("New friend request from %s\n", hex.EncodeToString(publicKey))
 	fmt.Printf("With message: %v\n", message)
 	channel.tox.FriendAddNorequest(publicKey)
+	// channel.callback.onPeerMessage()
 }
 
 func (channel *Channel) onFriendMessage(t *gotox.Tox, friendnumber uint32, messagetype gotox.ToxMessageType, message string) {
@@ -161,8 +180,5 @@ func (channel *Channel) onFriendMessage(t *gotox.Tox, friendnumber uint32, messa
 	} else {
 		fmt.Printf("New action from %d : %s\n", friendnumber, message)
 	}
-}
-
-func (channel *Channel) onFriendStatus(tox *gotox.Tox, friendnumber uint32, userstatus gotox.ToxUserStatus) {
-	// fmt.Printf("Status of %d is %T\n", friendnumber, userstatus)
+	// channel.callback.onPeerMessage()
 }
