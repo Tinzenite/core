@@ -1,45 +1,64 @@
 package core
 
 import (
-	"errors"
-	"log"
+	"os"
 	"os/user"
 )
 
 /*
-Errors that Tinzenite Core can return.
+Tinzenite is the struct on which all important operations should be called.
 */
-// TODO move to const.go
-var (
-	ErrUnsupported  = errors.New("Feature currently unsupported!")
-	ErrIsTinzenite  = errors.New("Already a Tinzenite directory!")
-	ErrNotTinzenite = errors.New("Path is not valid Tinzenite directory!")
-)
-
 type Tinzenite struct {
+	Name     string
+	Path     string
+	Username string
+	peer     *Peer
+	channel  *Channel
+	allPeers []Peer
+	// model    *Directory
 }
 
-func CreateTinzenite(path string, encrypted bool) (*Tinzenite, error) {
+/*
+CreateTinzenite makes a directory a new Tinzenite directory. Will return error
+if already so.
+*/
+func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool) (*Tinzenite, error) {
 	// encrypted peer for now unsupported
 	if encrypted {
 		return nil, ErrUnsupported
 	}
-	if IsTinzenite(path) {
+	if IsTinzenite(dirpath) {
 		return nil, ErrIsTinzenite
 	}
-	user, err := user.Current()
+	// build channel
+	channel, err := CreateChannel(peername, nil)
 	if err != nil {
 		return nil, err
 	}
-	tinzeniteConfigPath := user.HomeDir + "/.config/tinzenite" // + peer namehash (which also goes into the auth.json)
-	log.Println(tinzeniteConfigPath)
-	// TODO
-	/*
-	   - create context
-	   - store everything for initial stuff
-	   - ready connecting to rest of network
-	*/
-	return nil, nil
+	// build self peer
+	address, err := channel.Address()
+	if err != nil {
+		return nil, err
+	}
+	peer, err := CreatePeer(peername, address)
+	// Build
+	var tinzenite = &Tinzenite{
+		Name:     dirname,
+		Path:     dirpath,
+		Username: username,
+		peer:     peer,
+		channel:  channel}
+	// save
+	err = tinzenite.write()
+	if err != nil {
+		return nil, err
+	}
+	// save that this directory is now a tinzenite dir
+	err = tinzenite.storeNotify()
+	if err != nil {
+		return nil, err
+	}
+	return tinzenite, nil
 }
 
 func LoadTinzenite(path string) (*Tinzenite, error) {
@@ -53,8 +72,26 @@ func LoadTinzenite(path string) (*Tinzenite, error) {
 	return nil, nil
 }
 
-// RENAME
-func (tinzenite *Tinzenite) UpdateModel() error {
+func (tinzenite *Tinzenite) SyncModel() error {
+	// TODO
+	/*
+	   - fetches model from other peers and syncs (this is for manual sync)
+	*/
+	// first ensure that local model is up to date
+	err := tinzenite.updateModel()
+	if err != nil {
+		return err
+	}
+	// following concurrently?
+	// iterate over all known peers
+	// if online -> continue
+	// if not init -> init
+	// sync
+	return nil
+}
+
+// RENAME + include in SyncModel?
+func (tinzenite *Tinzenite) updateModel() error {
 	// TODO
 	/*
 				- updates from disk
@@ -64,13 +101,47 @@ func (tinzenite *Tinzenite) UpdateModel() error {
 				- watch out that it doesn't bite itself with whatever method is used
 						              to fetch models from online
 	*/
+
 	return nil
 }
 
-func (tinzenite *Tinzenite) SyncModel() error {
+/*
+write the tinzenite directory structure to disk.
+*/
+func (tinzenite *Tinzenite) write() error {
 	// TODO
 	/*
-	   - fetches model from other peers and syncs (this is for manual sync)
+		Writes everything in the .tinzenite directory.
 	*/
-	return nil
+	return makeDirectory(tinzenite.Path + "/" + TINZENITEDIR)
+}
+
+/*
+storeNotify stores the path value into the user's home directory so that clients
+can locate it.
+*/
+func (tinzenite *Tinzenite) storeNotify() error {
+	// ready outside data
+	user, err := user.Current()
+	if err != nil {
+		return err
+	}
+	path := user.HomeDir + "/.config/tinzenite"
+	err = makeDirectory(path)
+	if err != nil {
+		return err
+	}
+	path += "/" + DIRECTORYLIST
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, FILEPERMISSIONMODE)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	// write path to file
+	_, err = file.WriteString(tinzenite.Path + "\n")
+	if err != nil {
+		return err
+	}
+	// ensure that the file is valid
+	return PrettifyDirectoryList()
 }

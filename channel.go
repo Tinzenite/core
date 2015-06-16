@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -79,7 +78,6 @@ func CreateChannel(name string /*callback *ChannelCallback,*/, toxdata []byte) (
 	if err != nil {
 		return nil, err
 	}
-	log.Println("Created channel...")
 	// register callbacks
 	// channel.callback = callback
 	// now to run it:
@@ -95,14 +93,12 @@ func CreateChannel(name string /*callback *ChannelCallback,*/, toxdata []byte) (
 Close shuts down the channel.
 */
 func (channel *Channel) Close() {
-	log.Println("Closing channel...")
 	// send stop signal
 	stop <- false
 	// wait for it to close
 	wg.Wait()
 	// kill tox
 	channel.tox.Kill()
-	log.Println("Closed.")
 }
 
 /*

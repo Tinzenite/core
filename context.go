@@ -7,7 +7,7 @@ type Context struct {
 	channel *Channel
 	Address string
 	ToxData []byte
-	Peers   []peer
+	Peers   []Peer
 }
 
 /*
