@@ -129,3 +129,13 @@ func makeDirectory(path string) error {
 	// either successful or true error
 	return err
 }
+
+func makeDirectories(root string, subdirs ...string) error {
+	for _, path := range subdirs {
+		err := makeDirectory(root + "/" + path)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

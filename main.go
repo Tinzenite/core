@@ -113,7 +113,9 @@ func (tinzenite *Tinzenite) write() error {
 	/*
 		Writes everything in the .tinzenite directory.
 	*/
-	return makeDirectory(tinzenite.Path + "/" + TINZENITEDIR)
+	// build directory structure
+	return makeDirectories(tinzenite.Path+"/"+TINZENITEDIR,
+		"org/peers", "temp", "removed")
 }
 
 /*
