@@ -12,6 +12,7 @@ import (
 /*
 IsTinzenite checks whether a given path is indeed a valid directory
 */
+// TODO detect incomplete dir (no connected peers, etc)
 func IsTinzenite(dirpath string) bool {
 	_, err := os.Stat(dirpath + "/.tinzenite")
 	if err == nil {
@@ -66,4 +67,12 @@ func randomHash() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func makeDirectory(path string) error {
+	return os.Mkdir(path, 0777)
+}
+
+func makeFile(path string) error {
+	return ErrUnsupported
 }

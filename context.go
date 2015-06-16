@@ -1,13 +1,5 @@
 package core
 
-import "errors"
-
-// Errors for Context
-var (
-	ErrIsTinzenite  = errors.New("Already a Tinzenite directory!")
-	ErrNotTinzenite = errors.New("Not a Tinzenite directory!")
-)
-
 // Context is the peer context that Core will work with.
 type Context struct {
 	Name    string
