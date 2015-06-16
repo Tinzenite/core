@@ -1,6 +1,7 @@
 package core
 
 import (
+	"io/ioutil"
 	"os"
 	"os/user"
 )
@@ -47,7 +48,8 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 		Path:     dirpath,
 		Username: username,
 		peer:     peer,
-		channel:  channel}
+		channel:  channel,
+		allPeers: []Peer{*peer}}
 	// save
 	err = tinzenite.write()
 	if err != nil {
@@ -113,9 +115,21 @@ func (tinzenite *Tinzenite) write() error {
 	/*
 		Writes everything in the .tinzenite directory.
 	*/
+	root := tinzenite.Path + "/" + TINZENITEDIR
 	// build directory structure
-	return makeDirectories(tinzenite.Path+"/"+TINZENITEDIR,
+	err := makeDirectories(root,
 		"org/peers", "temp", "removed")
+	if err != nil {
+		return err
+	}
+	// write all peers to files
+	for _, peer := range tinzenite.allPeers {
+		err = ioutil.WriteFile(root+"/org/peers/"+peer.identification, []byte(peer.Name), FILEPERMISSIONMODE)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 /*
