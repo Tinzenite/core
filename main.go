@@ -74,6 +74,17 @@ func LoadTinzenite(path string) (*Tinzenite, error) {
 	return nil, nil
 }
 
+/*
+RemoveTinzenite directory. Specifically leaves all user files but removes all
+Tinzenite specific items.
+*/
+func RemoveTinzenite(path string) error {
+	if !IsTinzenite(path) {
+		return ErrNotTinzenite
+	}
+	return os.RemoveAll(path + "/" + TINZENITEDIR)
+}
+
 func (tinzenite *Tinzenite) SyncModel() error {
 	// TODO
 	/*
