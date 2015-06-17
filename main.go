@@ -82,6 +82,7 @@ func RemoveTinzenite(path string) error {
 	if !IsTinzenite(path) {
 		return ErrNotTinzenite
 	}
+	// TODO remove from directory list
 	return os.RemoveAll(path + "/" + TINZENITEDIR)
 }
 

@@ -9,6 +9,7 @@ var (
 	ErrUnsupported  = errors.New("Feature currently unsupported!")
 	ErrIsTinzenite  = errors.New("Already a Tinzenite directory!")
 	ErrNotTinzenite = errors.New("Path is not valid Tinzenite directory!")
+	ErrNoTinIgnore  = errors.New("No .tinignore file found!")
 )
 
 // constant value here
@@ -23,6 +24,7 @@ const (
 // Path constants here
 const (
 	TINZENITEDIR  = ".tinzenite"
+	TINIGNORE     = ".tinignore"
 	DIRECTORYLIST = "directory.list"
 )
 
