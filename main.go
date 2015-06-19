@@ -56,13 +56,17 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 		return nil, err
 	}
 	// save that this directory is now a tinzenite dir
-	err = tinzenite.storeNotify()
+	err = tinzenite.storeGlobalConfig()
 	if err != nil {
 		return nil, err
 	}
 	return tinzenite, nil
 }
 
+/*
+LoadTinzenite will try to load the given directory path as a Tinzenite directory.
+If not one it won't work: use CreateTinzenite to create a new peer.
+*/
 func LoadTinzenite(path string) (*Tinzenite, error) {
 	if !IsTinzenite(path) {
 		return nil, ErrNotTinzenite
@@ -71,7 +75,7 @@ func LoadTinzenite(path string) (*Tinzenite, error) {
 	/*
 	   - load dir from given path (validate that path IS tinzenite first)
 	*/
-	return nil, nil
+	return nil, ErrUnsupported
 }
 
 /*
@@ -115,7 +119,7 @@ func (tinzenite *Tinzenite) updateModel() error {
 				- watch out that it doesn't bite itself with whatever method is used
 						              to fetch models from online
 	*/
-
+	// use matcher on a per directory basis!
 	return nil
 }
 
@@ -145,10 +149,10 @@ func (tinzenite *Tinzenite) write() error {
 }
 
 /*
-storeNotify stores the path value into the user's home directory so that clients
+storeGlobalConfig stores the path value into the user's home directory so that clients
 can locate it.
 */
-func (tinzenite *Tinzenite) storeNotify() error {
+func (tinzenite *Tinzenite) storeGlobalConfig() error {
 	// ready outside data
 	user, err := user.Current()
 	if err != nil {

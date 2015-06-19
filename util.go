@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -54,38 +53,6 @@ func PrettifyDirectoryList() error {
 		newContents += key + "\n"
 	}
 	return ioutil.WriteFile(path, []byte(newContents), FILEPERMISSIONMODE)
-}
-
-func saveContext(context *Context) error {
-	JSON, err := json.MarshalIndent(context, "", "    ")
-	if err != nil {
-		return err
-	}
-	dir := context.Path + "/" + TINZENITEDIR
-	err = os.Mkdir(dir, 0777)
-	if err != nil {
-		return err
-	}
-	file, err := os.Create(dir + "/temp.json")
-	if err != nil {
-		return err
-	}
-	_, err = file.Write(JSON)
-	return err
-}
-
-// dirpath MUST be only to main dir!
-func loadContext(dirpath string) (*Context, error) {
-	data, err := ioutil.ReadFile(dirpath + "/" + TINZENITEDIR + "/temp.json")
-	if err != nil {
-		return nil, err
-	}
-	var context *Context
-	err = json.Unmarshal(data, &context)
-	if err != nil {
-		return nil, err
-	}
-	return context, err
 }
 
 func randomHash() (string, error) {
