@@ -15,7 +15,7 @@ type Tinzenite struct {
 	Path     string
 	Username string
 	peer     *Peer
-	channel  *channel
+	channel  *Channel
 	allPeers []Peer
 	// model    *Directory
 }
@@ -38,7 +38,7 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 		Path:     dirpath,
 		Username: username}
 	// build channel
-	channel, err := createChannel(peername, nil, tinzenite)
+	channel, err := CreateChannel(peername, nil, tinzenite)
 	if err != nil {
 		return nil, err
 	}
@@ -115,6 +115,20 @@ func (tinzenite *Tinzenite) SyncModel() error {
 	return nil
 }
 
+/*
+Address of this Tinzenite peer.
+*/
+func (tinzenite *Tinzenite) Address() string {
+	return tinzenite.peer.Address
+}
+
+/*
+Close cleanly stores everything and shuts Tinzenite down.
+*/
+func (tinzenite *Tinzenite) Close() {
+	tinzenite.channel.Close()
+}
+
 // RENAME + include in SyncModel?
 func (tinzenite *Tinzenite) updateModel() error {
 	// TODO
@@ -158,17 +172,20 @@ func (tinzenite *Tinzenite) write() error {
 /*
 callbackNewConnection is called when a new connection request comes in.
 */
-func (tinzenite *Tinzenite) callbackNewConnection(address, message string) bool {
+func (tinzenite *Tinzenite) CallbackNewConnection(address, message string) {
 	log.Printf("New connection from <%s> with message <%s>\n", address, message)
-	// TODO for now always accept
-	return true
+	err := tinzenite.channel.AcceptConnection(address)
+	if err != nil {
+		log.Println(err.Error())
+	}
 }
 
 /*
 callbackMessage is called when a message is received.
 */
-func (tinzenite *Tinzenite) callbackMessage(address, message string) {
+func (tinzenite *Tinzenite) CallbackMessage(address, message string) {
 	log.Printf("Message from <%s> with message <%s>\n", address, message)
+	tinzenite.channel.Send(address, "ACK")
 }
 
 /*

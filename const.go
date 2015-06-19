@@ -35,9 +35,20 @@ of Tinzenite peers.
 type CommunicationMethod int
 
 const (
-	none CommunicationMethod = iota
-	tox
+	/*None method.*/
+	None CommunicationMethod = iota
+	/*Tox protocol.*/
+	Tox
 )
+
+func (communicationMethod CommunicationMethod) String() string {
+	switch communicationMethod {
+	case Tox:
+		return "Tox"
+	default:
+		return "None"
+	}
+}
 
 /*
 type Object interface {

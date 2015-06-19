@@ -11,6 +11,43 @@ import (
 	"strings"
 )
 
+type relativePath struct {
+	Root    string
+	Subpath string
+}
+
+func createPath(rootpath string) *relativePath {
+	rootpath = strings.TrimSuffix(rootpath, "/")
+	return &relativePath{Root: rootpath,
+		Subpath: ""}
+}
+
+func (relativePath *relativePath) FullPath() string {
+	return relativePath.Root + "/" + relativePath.Subpath
+}
+
+func (relativePath *relativePath) Down(step string) {
+	step = strings.Trim(step, "/")
+	relativePath.Subpath = relativePath.Subpath + "/" + step
+}
+
+func (relativePath *relativePath) Up() {
+	index := strings.LastIndex(relativePath.Subpath, "/")
+	if index == -1 {
+		// we never touch root
+		return
+	}
+	relativePath.Subpath = relativePath.Subpath[:index]
+}
+
+func (relativePath *relativePath) Validate() bool {
+	_, err := os.Lstat(relativePath.FullPath())
+	if err != nil {
+		return false
+	}
+	return true
+}
+
 /*
 IsTinzenite checks whether a given path is indeed a valid directory
 */

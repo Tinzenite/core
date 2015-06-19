@@ -1,5 +1,8 @@
 package core
 
+/*
+Peer is the communication representation of a Tinzenite peer.
+*/
 type Peer struct {
 	Name           string
 	Address        string
@@ -8,6 +11,9 @@ type Peer struct {
 	identification string
 }
 
+/*
+CreatePeer creates a new object. For now always of type Tox.
+*/
 func CreatePeer(name string, address string) (*Peer, error) {
 	id, err := newIdentifier()
 	if err != nil {
@@ -16,7 +22,7 @@ func CreatePeer(name string, address string) (*Peer, error) {
 	return &Peer{
 		Name:           name,
 		Address:        address,
-		Protocol:       tox,
+		Protocol:       Tox,
 		Encrypted:      false,
 		identification: id}, nil
 }
