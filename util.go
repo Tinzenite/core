@@ -139,25 +139,3 @@ func makeDirectories(root string, subdirs ...string) error {
 	}
 	return nil
 }
-
-/*
-ReadTinIgnore reads the .tinignore file in the given path if it exists. If not
-or some other error happens it returns ErrNoTinIgnore.
-*/
-func ReadTinIgnore(path string) ([]string, error) {
-	data, err := ioutil.ReadFile(path + "/" + TINIGNORE)
-	if err != nil {
-		// TODO is this correct? Can I be sure that I don't want to know what
-		//	    other errors may happen here?
-		return nil, ErrNoTinIgnore
-	}
-	// sanitize (remove empty lines)
-	list := strings.Split(string(data), "\n")
-	var sanitized []string
-	for _, value := range list {
-		if value != "" {
-			sanitized = append(sanitized, value)
-		}
-	}
-	return sanitized, nil
-}
