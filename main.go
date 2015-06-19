@@ -2,6 +2,7 @@ package core
 
 import (
 	"io/ioutil"
+	"log"
 	"os"
 	"os/user"
 )
@@ -14,7 +15,7 @@ type Tinzenite struct {
 	Path     string
 	Username string
 	peer     *Peer
-	channel  *Channel
+	channel  *channel
 	allPeers []Peer
 	// model    *Directory
 }
@@ -31,25 +32,28 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 	if IsTinzenite(dirpath) {
 		return nil, ErrIsTinzenite
 	}
+	// Build
+	var tinzenite = &Tinzenite{
+		Name:     dirname,
+		Path:     dirpath,
+		Username: username}
 	// build channel
-	channel, err := CreateChannel(peername, nil)
+	channel, err := createChannel(peername, nil, tinzenite)
 	if err != nil {
 		return nil, err
 	}
+	tinzenite.channel = channel
 	// build self peer
 	address, err := channel.Address()
 	if err != nil {
 		return nil, err
 	}
 	peer, err := CreatePeer(peername, address)
-	// Build
-	var tinzenite = &Tinzenite{
-		Name:     dirname,
-		Path:     dirpath,
-		Username: username,
-		peer:     peer,
-		channel:  channel,
-		allPeers: []Peer{*peer}}
+	if err != nil {
+		return nil, err
+	}
+	tinzenite.peer = peer
+	tinzenite.allPeers = []Peer{*peer}
 	// save
 	err = tinzenite.write()
 	if err != nil {
@@ -71,9 +75,9 @@ func LoadTinzenite(path string) (*Tinzenite, error) {
 	if !IsTinzenite(path) {
 		return nil, ErrNotTinzenite
 	}
-	// TODO
 	/*
-	   - load dir from given path (validate that path IS tinzenite first)
+			TODO
+		   - load dir from given path (validate that path IS tinzenite first)
 	*/
 	return nil, ErrUnsupported
 }
@@ -90,10 +94,13 @@ func RemoveTinzenite(path string) error {
 	return os.RemoveAll(path + "/" + TINZENITEDIR)
 }
 
+/*
+SyncModel TODO
+*/
 func (tinzenite *Tinzenite) SyncModel() error {
-	// TODO
 	/*
-	   - fetches model from other peers and syncs (this is for manual sync)
+		TODO
+		- fetches model from other peers and syncs (this is for manual sync)
 	*/
 	// first ensure that local model is up to date
 	err := tinzenite.updateModel()
@@ -146,6 +153,22 @@ func (tinzenite *Tinzenite) write() error {
 		}
 	}
 	return nil
+}
+
+/*
+callbackNewConnection is called when a new connection request comes in.
+*/
+func (tinzenite *Tinzenite) callbackNewConnection(address, message string) bool {
+	log.Printf("New connection from <%s> with message <%s>\n", address, message)
+	// TODO for now always accept
+	return true
+}
+
+/*
+callbackMessage is called when a message is received.
+*/
+func (tinzenite *Tinzenite) callbackMessage(address, message string) {
+	log.Printf("Message from <%s> with message <%s>\n", address, message)
 }
 
 /*

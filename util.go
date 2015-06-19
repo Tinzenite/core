@@ -14,7 +14,7 @@ import (
 /*
 IsTinzenite checks whether a given path is indeed a valid directory
 */
-// TODO detect incomplete dir (no connected peers, etc)
+// TODO detect incomplete dir (no connected peers, etc) or write a validate method
 func IsTinzenite(dirpath string) bool {
 	_, err := os.Stat(dirpath + "/" + TINZENITEDIR)
 	if err == nil {
@@ -97,6 +97,10 @@ func makeDirectory(path string) error {
 	return err
 }
 
+/*
+makeDirectories creates a number of directories in the given root path. Useful
+if a complete directory tree has to be built at once.
+*/
 func makeDirectories(root string, subdirs ...string) error {
 	for _, path := range subdirs {
 		err := makeDirectory(root + "/" + path)

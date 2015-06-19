@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -16,17 +17,17 @@ import (
 Channel is a wrapper of the gotox wrapper that creates and manages the underlying Tox
 instance.
 */
-type Channel struct {
-	tox      *gotox.Tox
-	callback *ChannelCallback
+type channel struct {
+	tox *gotox.Tox
+	/*TODO all callbacks will block, need to avoid that especially when user interaction is required*/
+	callbacks callbacks
 }
 
-/*
-ChannelCallback contains the methods that are called when things happen.
-*/
-type ChannelCallback interface {
-	tyonNewConnection()
-	onPeerMessage()
+type callbacks interface {
+	/*CallbackNewConnection is called on a Tox friend request.	 */
+	callbackNewConnection(address, message string) bool
+	/*CallbackMessage is called on an incomming message.*/
+	callbackMessage(address, message string)
 }
 
 var wg sync.WaitGroup
@@ -36,11 +37,11 @@ var stop chan bool
 CreateChannel creates and starts a new tox channel that continously runs in the background
 until this object is destroyed.
 */
-func CreateChannel(name string /*callback *ChannelCallback,*/, toxdata []byte) (*Channel, error) {
+func createChannel(name string, toxdata []byte, callbacks callbacks) (*channel, error) {
 	if name == "" {
 		return nil, errors.New("CreateChannel called with no name!")
 	}
-	var channel = &Channel{nil, nil}
+	var channel = &channel{}
 	var options *gotox.Options
 	var err error
 
@@ -92,7 +93,7 @@ func CreateChannel(name string /*callback *ChannelCallback,*/, toxdata []byte) (
 /*
 Close shuts down the channel.
 */
-func (channel *Channel) Close() {
+func (channel *channel) Close() {
 	// send stop signal
 	stop <- false
 	// wait for it to close
@@ -104,7 +105,7 @@ func (channel *Channel) Close() {
 /*
 Address of the Tox instance.
 */
-func (channel *Channel) Address() (string, error) {
+func (channel *channel) Address() (string, error) {
 	address, err := channel.tox.SelfGetAddress()
 	if err != nil {
 		return "", err
@@ -116,14 +117,14 @@ func (channel *Channel) Address() (string, error) {
 ToxData returns the underlying current representation of the tox data. Can be
 used to store a Tox instance to disk.
 */
-func (channel *Channel) ToxData() ([]byte, error) {
+func (channel *channel) ToxData() ([]byte, error) {
 	return channel.tox.GetSavedata()
 }
 
 /*
 Send a message to the given peer address.
 */
-func (channel *Channel) Send(address, message string) error {
+func (channel *channel) Send(address, message string) error {
 	key, err := hex.DecodeString(address)
 	if err != nil {
 		return err
@@ -143,7 +144,7 @@ func (channel *Channel) Send(address, message string) error {
 run is the background go routine method that keeps the Tox instance iterating
 until Close() is called.
 */
-func (channel *Channel) run() {
+func (channel *channel) run() {
 	for {
 		temp, _ := channel.tox.IterationInterval()
 		intervall := time.Duration(temp) * time.Millisecond
@@ -162,19 +163,26 @@ func (channel *Channel) run() {
 	} // for
 }
 
-func (channel *Channel) onFriendRequest(t *gotox.Tox, publicKey []byte, message string) {
-	fmt.Printf("New friend request from %s\n", hex.EncodeToString(publicKey))
-	fmt.Printf("With message: %v\n", message)
-	channel.tox.FriendAddNorequest(publicKey)
-	// channel.callback.onPeerMessage()
+func (channel *channel) onFriendRequest(t *gotox.Tox, publicKey []byte, message string) {
+	// if the callback returns true we are supposed to accept the connection
+	/*TODO this blocks, how do I avoid that?*/
+	if channel.callbacks.callbackNewConnection(hex.EncodeToString(publicKey), message) {
+		channel.tox.FriendAddNorequest(publicKey)
+	}
 }
 
-func (channel *Channel) onFriendMessage(t *gotox.Tox, friendnumber uint32, messagetype gotox.ToxMessageType, message string) {
+func (channel *channel) onFriendMessage(t *gotox.Tox, friendnumber uint32, messagetype gotox.ToxMessageType, message string) {
 	if messagetype == gotox.TOX_MESSAGE_TYPE_NORMAL {
 		fmt.Printf("New message from %d : %s\n", friendnumber, message)
 		t.FriendSendMessage(friendnumber, messagetype, message)
+		// get friend address
+		publicKey, err := t.FriendGetPublickey(friendnumber)
+		if err != nil {
+			log.Println("Failed to find address! Not calling callback!")
+			return
+		}
+		channel.callbacks.callbackMessage(hex.EncodeToString(publicKey), message)
 	} else {
 		fmt.Printf("New action from %d : %s\n", friendnumber, message)
 	}
-	// channel.callback.onPeerMessage()
 }
