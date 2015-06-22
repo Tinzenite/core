@@ -35,7 +35,7 @@ func CreateMatcher(rootPath string) (*Matcher, error) {
 	}
 	for _, line := range allRules {
 		// is the line a rule for a directory?
-		if strings.HasSuffix(line, "/") {
+		if strings.HasPrefix(line, "/") {
 			matcher.dirRules = append(matcher.dirRules, line)
 		} else {
 			matcher.fileRules = append(matcher.fileRules, line)
@@ -82,6 +82,13 @@ IsEmpty can be used to see if the matcher contains any rules at all.
 */
 func (matcher *Matcher) IsEmpty() bool {
 	return matcher.empty
+}
+
+/*
+Same returns true if the path is the path for this matcher.
+*/
+func (matcher *Matcher) Same(path string) bool {
+	return path == matcher.root
 }
 
 /*

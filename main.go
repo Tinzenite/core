@@ -151,8 +151,8 @@ func (tinzenite *Tinzenite) updateModel() error {
 }
 
 func (tinzenite *Tinzenite) createModel() {
-	rPath := relativePath{Root: tinzenite.Path}
-	model, err := buildModel(rPath, false, tinzenite.allPeers)
+	rPath := relativePath{root: tinzenite.Path}
+	model, err := defaultBuildModel(rPath, tinzenite.peer)
 	if err != nil {
 		panic(err)
 	}

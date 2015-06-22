@@ -12,41 +12,49 @@ import (
 )
 
 type relativePath struct {
-	Root    string
-	Subpath string
+	root    string
+	subpath string
 }
 
 func createPath(rootpath string) *relativePath {
 	rootpath = strings.TrimSuffix(rootpath, "/")
-	return &relativePath{Root: rootpath,
-		Subpath: ""}
+	return &relativePath{root: rootpath,
+		subpath: ""}
 }
 
 func (r *relativePath) FullPath() string {
-	if r.Subpath == "" {
-		return r.Root
+	if r.subpath == "" {
+		return r.root
 	}
-	return r.Root + "/" + r.Subpath
+	return r.root + "/" + r.subpath
+}
+
+func (r *relativePath) Root() string {
+	return r.root
+}
+
+func (r *relativePath) Subpath() string {
+	return "/" + r.subpath
 }
 
 func (r *relativePath) Down(step string) *relativePath {
 	step = strings.Trim(step, "/")
-	newPath := &relativePath{Root: r.Root, Subpath: r.Subpath}
-	if r.Subpath == "" {
-		newPath.Subpath = step
+	newPath := &relativePath{root: r.root, subpath: r.subpath}
+	if r.subpath == "" {
+		newPath.subpath = step
 	} else {
-		newPath.Subpath = r.Subpath + "/" + step
+		newPath.subpath = r.subpath + "/" + step
 	}
 	return newPath
 }
 
 func (r *relativePath) Up() *relativePath {
-	newPath := &relativePath{Root: r.Root, Subpath: r.Subpath}
-	index := strings.LastIndex(r.Subpath, "/")
+	newPath := &relativePath{root: r.root, subpath: r.subpath}
+	index := strings.LastIndex(r.subpath, "/")
 	if index < 0 {
 		return newPath
 	}
-	newPath.Subpath = r.Subpath[:index]
+	newPath.subpath = r.subpath[:index]
 	return newPath
 }
 
@@ -59,9 +67,9 @@ func (r *relativePath) LastElement() string {
 }
 
 func (r *relativePath) Apply(path string) *relativePath {
-	newPath := &relativePath{Root: r.Root, Subpath: r.Subpath}
-	if strings.HasPrefix(path, r.Root) {
-		newPath.Subpath = strings.TrimPrefix(path, r.Root)
+	newPath := &relativePath{root: r.root, subpath: r.subpath}
+	if strings.HasPrefix(path, r.root) {
+		newPath.subpath = strings.TrimPrefix(path, r.root)
 	}
 	return newPath
 }
@@ -148,6 +156,24 @@ func newIdentifier() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(hash.Sum(nil))[:IDMAXLENGTH], nil
+}
+
+func contentHash(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := md5.New()
+	buf := make([]byte, CHUNKSIZE)
+	// create hash
+	for amount := CHUNKSIZE; amount == CHUNKSIZE; {
+		amount, _ = file.Read(buf)
+		// log.Printf("Read %d bytes", amount)
+		hash.Write(buf)
+	}
+	// return hex representation
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func makeDirectory(path string) error {

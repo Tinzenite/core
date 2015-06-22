@@ -19,6 +19,7 @@ const (
 	// IDMAXLENGTH is the length in chars of new random identification hashes.
 	IDMAXLENGTH        = 16
 	FILEPERMISSIONMODE = 0777
+	CHUNKSIZE          = 8 * 1024
 )
 
 // Path constants here
