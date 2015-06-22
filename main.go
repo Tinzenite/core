@@ -18,7 +18,7 @@ type Tinzenite struct {
 	peer     *Peer
 	channel  *Channel
 	allPeers []*Peer
-	model    *objmodel
+	model    *objectinfo
 }
 
 /*
@@ -156,7 +156,7 @@ func (tinzenite *Tinzenite) createModel() {
 	if err != nil {
 		panic(err)
 	}
-	tinzenite.model = &model
+	tinzenite.model = model
 }
 
 /*

@@ -9,25 +9,18 @@ import (
 	"os"
 )
 
-type dirmodel struct {
-	intype         dirint
+type objectinfo struct {
+	directory      bool
 	Identification string
+	Name           string
 	Path           string
 	Shadow         bool
 	Version        map[string]int
-	Objects        []*objmodel
+	Objects        []*objectinfo `json:",omitempty"`
+	Content        string        `json:",omitempty"`
 }
 
-type filemodel struct {
-	intype         fileint
-	Identification string
-	Path           string
-	Shadow         bool
-	Version        map[string]int
-	Content        string
-}
-
-func buildModel(path relativePath, shadow bool, peers []*Peer) (objmodel, error) {
+func buildModel(path relativePath, shadow bool, peers []*Peer) (*objectinfo, error) {
 	stat, err := os.Lstat(path.FullPath())
 	if err != nil {
 		return nil, err
@@ -39,21 +32,23 @@ func buildModel(path relativePath, shadow bool, peers []*Peer) (objmodel, error)
 	if err != nil {
 		return nil, err
 	}
-	model := dirmodel{Identification: id,
-		Path:   path.Subpath,
-		Shadow: shadow}
+	this := objectinfo{
+		directory:      true,
+		Identification: id,
+		Name:           path.LastElement(),
+		Path:           path.Subpath,
+		Shadow:         shadow}
 	versionDefault := map[string]int{}
 	for _, peer := range peers {
 		versionDefault[peer.identification] = 0
 	}
-	model.Version = versionDefault
+	this.Version = versionDefault
 	subStat, err := ioutil.ReadDir(path.FullPath())
 	if err != nil {
 		return nil, err
 	}
-	log.Println("Looking at " + path.FullPath())
 	for _, stat := range subStat {
-		var element objmodel
+		var element *objectinfo
 		subpath := path.Down(stat.Name())
 		if stat.IsDir() {
 			element, err = buildModel(*subpath, shadow, peers)
@@ -61,32 +56,25 @@ func buildModel(path relativePath, shadow bool, peers []*Peer) (objmodel, error)
 				return nil, err
 			}
 		} else {
+			// each file gets new id
 			subid, err := newIdentifier()
 			if err != nil {
 				return nil, err
 			}
-			fm := filemodel{Identification: subid,
-				Path:    subpath.Subpath,
-				Shadow:  shadow,
-				Content: "hash"}
+			fm := objectinfo{
+				directory:      false,
+				Identification: subid,
+				Name:           subpath.LastElement(),
+				Path:           subpath.Subpath,
+				Shadow:         shadow,
+				Content:        "hash"}
 			fm.Version = versionDefault
-			element = fm
+			element = &fm
 		}
-		model.Objects = append(model.Objects, &element)
+		this.Objects = append(this.Objects, element)
 	}
-	return model, nil
+	return &this, nil
 }
-
-/*
-func (dirm *dirmodel) walk(function func(object objmodel)) {
-	for _, sub := range dirm.Objects {
-		switch sub.(type) {
-		case dirmodel:
-		case fileint:
-		}
-	}
-}
-*/
 
 /*
 Model a path.

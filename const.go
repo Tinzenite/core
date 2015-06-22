@@ -49,13 +49,3 @@ func (communicationMethod CommunicationMethod) String() string {
 		return "None"
 	}
 }
-
-type objmodel interface{}
-
-type dirint interface {
-	objmodel
-}
-
-type fileint struct {
-	objmodel
-}
