@@ -70,6 +70,9 @@ func buildModel(path relativePath, shadow bool, peers []*Peer, matcher Matcher) 
 	}
 	results := make(chan *objectinfo, 1)
 	for _, stat := range subStat {
+		/*
+			TODO: this is only faster when GOMAXPROCS>1. Can I programmatically set this?
+		*/
 		go func(stat os.FileInfo, path relativePath) {
 			subpath := path.Down(stat.Name())
 			// check for things to ignore (NOTE: subpath because checking full path is kind of stupid, I think)
