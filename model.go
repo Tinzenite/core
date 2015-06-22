@@ -68,40 +68,55 @@ func buildModel(path relativePath, shadow bool, peers []*Peer, matcher Matcher) 
 	if err != nil {
 		return nil, err
 	}
+	results := make(chan *objectinfo, 1)
 	for _, stat := range subStat {
-		var element *objectinfo
-		subpath := path.Down(stat.Name())
-		// check for things to ignore (NOTE: subpath because checking full path is kind of stupid, I think)
-		if matcher.Ignore(subpath.Subpath()) {
+		go func(stat os.FileInfo, path relativePath) {
+			subpath := path.Down(stat.Name())
+			// check for things to ignore (NOTE: subpath because checking full path is kind of stupid, I think)
+			if matcher.Ignore(subpath.Subpath()) {
+				results <- nil
+			}
+			// recursion if dir
+			if stat.IsDir() {
+				element, err := buildModel(*subpath, shadow, peers, matcher)
+				if err != nil {
+					log.Println(err.Error())
+					results <- nil
+					return
+				}
+				results <- element
+			} else {
+				// each file gets new id
+				subid, err := newIdentifier()
+				if err != nil {
+					log.Println(err.Error())
+					results <- nil
+					return
+				}
+				hash, err := contentHash(subpath.FullPath())
+				if err != nil {
+					log.Println(err.Error())
+					results <- nil
+					return
+				}
+				fm := objectinfo{
+					directory:      false,
+					Identification: subid,
+					Name:           subpath.LastElement(),
+					Path:           subpath.Subpath(),
+					Shadow:         shadow,
+					Content:        hash}
+				fm.Version = versionDefault
+				results <- &fm
+			}
+		}(stat, path)
+	}
+	for i := 0; i < len(subStat); i++ {
+		result := <-results
+		if result == nil {
 			continue
 		}
-		// recursion if dir
-		if stat.IsDir() {
-			element, err = buildModel(*subpath, shadow, peers, matcher)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			// each file gets new id
-			subid, err := newIdentifier()
-			if err != nil {
-				return nil, err
-			}
-			hash, err := contentHash(subpath.FullPath())
-			if err != nil {
-				return nil, err
-			}
-			fm := objectinfo{
-				directory:      false,
-				Identification: subid,
-				Name:           subpath.LastElement(),
-				Path:           subpath.Subpath(),
-				Shadow:         shadow,
-				Content:        hash}
-			fm.Version = versionDefault
-			element = &fm
-		}
-		this.Objects = append(this.Objects, element)
+		this.Objects = append(this.Objects, result)
 	}
 	return &this, nil
 }
