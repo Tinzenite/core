@@ -22,41 +22,52 @@ func createPath(rootpath string) *relativePath {
 		Subpath: ""}
 }
 
-func (relativePath *relativePath) FullPath() string {
-	if relativePath.Subpath == "" {
-		return relativePath.Root
+func (r *relativePath) FullPath() string {
+	if r.Subpath == "" {
+		return r.Root
 	}
-	return relativePath.Root + "/" + relativePath.Subpath
+	return r.Root + "/" + r.Subpath
 }
 
-func (relativePath *relativePath) Down(step string) {
+func (r *relativePath) Down(step string) *relativePath {
 	step = strings.Trim(step, "/")
-	if relativePath.Subpath == "" {
-		relativePath.Subpath = step
+	newPath := &relativePath{Root: r.Root, Subpath: r.Subpath}
+	if r.Subpath == "" {
+		newPath.Subpath = step
 	} else {
-		relativePath.Subpath = relativePath.Subpath + "/" + step
+		newPath.Subpath = r.Subpath + "/" + step
 	}
+	return newPath
 }
 
-func (relativePath *relativePath) Up() {
-	index := strings.LastIndex(relativePath.Subpath, "/")
+func (r *relativePath) Up() *relativePath {
+	newPath := &relativePath{Root: r.Root, Subpath: r.Subpath}
+	index := strings.LastIndex(r.Subpath, "/")
 	if index < 0 {
-		// we never touch root
-		return
+		return newPath
 	}
-	relativePath.Subpath = relativePath.Subpath[:index]
+	newPath.Subpath = r.Subpath[:index]
+	return newPath
 }
 
-func (relativePath *relativePath) LastElement() string {
-	index := strings.LastIndex(relativePath.FullPath(), "/")
+func (r *relativePath) LastElement() string {
+	index := strings.LastIndex(r.FullPath(), "/")
 	if index < 0 {
 		return "/"
 	}
-	return relativePath.Root[index:]
+	return r.FullPath()[index+1:]
 }
 
-func (relativePath *relativePath) Validate() bool {
-	_, err := os.Lstat(relativePath.FullPath())
+func (r *relativePath) Apply(path string) *relativePath {
+	newPath := &relativePath{Root: r.Root, Subpath: r.Subpath}
+	if strings.HasPrefix(path, r.Root) {
+		newPath.Subpath = strings.TrimPrefix(path, r.Root)
+	}
+	return newPath
+}
+
+func (r *relativePath) Validate() bool {
+	_, err := os.Lstat(r.FullPath())
 	if err != nil {
 		return false
 	}

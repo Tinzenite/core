@@ -50,17 +50,12 @@ func (communicationMethod CommunicationMethod) String() string {
 	}
 }
 
-/*
-type Object interface {
+type objmodel interface{}
+
+type dirint interface {
+	objmodel
 }
 
-type Directory struct {
-	_    Object
-	Name string
+type fileint struct {
+	objmodel
 }
-
-type File struct {
-	_    Object
-	Name string
-}
-*/

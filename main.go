@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"io/ioutil"
 	"log"
 	"os"
@@ -16,8 +17,8 @@ type Tinzenite struct {
 	Username string
 	peer     *Peer
 	channel  *Channel
-	allPeers []Peer
-	// model    *Directory
+	allPeers []*Peer
+	model    *objmodel
 }
 
 /*
@@ -53,7 +54,7 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 		return nil, err
 	}
 	tinzenite.peer = peer
-	tinzenite.allPeers = []Peer{*peer}
+	tinzenite.allPeers = []*Peer{peer}
 	// save
 	err = tinzenite.write()
 	if err != nil {
@@ -64,6 +65,8 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 	if err != nil {
 		return nil, err
 	}
+	// make sure model is ready
+	tinzenite.createModel()
 	return tinzenite, nil
 }
 
@@ -131,6 +134,9 @@ func (tinzenite *Tinzenite) Close() {
 
 // RENAME + include in SyncModel?
 func (tinzenite *Tinzenite) updateModel() error {
+	if tinzenite.model == nil {
+		return errors.New("Model has not yet been created!")
+	}
 	// TODO
 	/*
 				- updates from disk
@@ -142,6 +148,15 @@ func (tinzenite *Tinzenite) updateModel() error {
 	*/
 	// use matcher on a per directory basis!
 	return nil
+}
+
+func (tinzenite *Tinzenite) createModel() {
+	rPath := relativePath{Root: tinzenite.Path}
+	model, err := buildModel(rPath, false, tinzenite.allPeers)
+	if err != nil {
+		panic(err)
+	}
+	tinzenite.model = &model
 }
 
 /*
