@@ -23,21 +23,36 @@ func createPath(rootpath string) *relativePath {
 }
 
 func (relativePath *relativePath) FullPath() string {
+	if relativePath.Subpath == "" {
+		return relativePath.Root
+	}
 	return relativePath.Root + "/" + relativePath.Subpath
 }
 
 func (relativePath *relativePath) Down(step string) {
 	step = strings.Trim(step, "/")
-	relativePath.Subpath = relativePath.Subpath + "/" + step
+	if relativePath.Subpath == "" {
+		relativePath.Subpath = step
+	} else {
+		relativePath.Subpath = relativePath.Subpath + "/" + step
+	}
 }
 
 func (relativePath *relativePath) Up() {
 	index := strings.LastIndex(relativePath.Subpath, "/")
-	if index == -1 {
+	if index < 0 {
 		// we never touch root
 		return
 	}
 	relativePath.Subpath = relativePath.Subpath[:index]
+}
+
+func (relativePath *relativePath) LastElement() string {
+	index := strings.LastIndex(relativePath.FullPath(), "/")
+	if index < 0 {
+		return "/"
+	}
+	return relativePath.Root[index:]
 }
 
 func (relativePath *relativePath) Validate() bool {

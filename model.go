@@ -17,9 +17,9 @@ func buildModel(path *relativePath) error {
 	}
 	log.Println("At: " + path.FullPath())
 	if stat.IsDir() {
-		log.Println("Directory: " + path.Subpath)
+		log.Println("Directory: " + path.LastElement())
 	} else {
-		log.Println("File: " + path.Subpath)
+		log.Println("File: " + path.LastElement())
 	}
 	return nil
 }
@@ -30,11 +30,6 @@ Model a path.
 func Model(path string) {
 	// test relativePath
 	p := &relativePath{Root: path}
-	p.Down("/Music/")
-	p.Up()
-	p.Up()
-	p.Down("Programming")
-	p.Down("tinzenite")
 	log.Println("Starting at " + p.FullPath())
 	buildModel(p)
 }
