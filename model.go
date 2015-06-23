@@ -61,6 +61,20 @@ func (m *Model) store() error {
 	return ErrUnsupported
 }
 
+func (m *Model) getInfo(path string) *Objectinfo {
+	_, exists := m.tracked[path]
+	if !exists {
+		return nil
+	}
+	/*TODO:
+	- build object
+	- what about children? Does this method only return empty dir and files?
+	- dirs with content can be filled on Read(), right? Only need to place the
+	  pointers correctly then.
+	*/
+	return nil
+}
+
 func (m *Model) populate() error {
 	match, err := CreateMatcher(m.root)
 	if err != nil {
