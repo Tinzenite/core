@@ -9,7 +9,11 @@ import (
 
 /*Model todo*/
 type Model struct {
-	root    string
+	root string
+	/*
+	   TODO bad performance once very large - replace with struct? Size argument
+	   in make seems not to make a difference.
+	*/
 	tracked map[string]bool
 }
 
@@ -58,13 +62,26 @@ func (m *Model) store() error {
 }
 
 func (m *Model) populate() error {
+	match, err := CreateMatcher(m.root)
+	if err != nil {
+		return err
+	}
 	filepath.Walk(m.root, func(subpath string, stat os.FileInfo, inerr error) error {
+		// ignore on match
+		if match.Ignore(subpath) {
+			// SkipDir is okay even if file
+			if stat.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		m.tracked[subpath] = true
 		return nil
 	})
 	return nil
 }
 
+/*TODO for now only lists all tracked files*/
 func (m *Model) String() string {
 	var list string
 	for path := range m.tracked {

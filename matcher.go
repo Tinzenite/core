@@ -13,7 +13,7 @@ type Matcher struct {
 	root      string
 	dirRules  []string
 	fileRules []string
-	empty     bool
+	used      bool
 }
 
 /*
@@ -27,7 +27,6 @@ func CreateMatcher(rootPath string) (*Matcher, error) {
 	allRules, err := readTinIgnore(rootPath)
 	if err == ErrNoTinIgnore {
 		// if empty we're done
-		matcher.empty = true
 		return &matcher, nil
 	} else if err != nil {
 		// return other errors however
@@ -41,6 +40,11 @@ func CreateMatcher(rootPath string) (*Matcher, error) {
 			matcher.fileRules = append(matcher.fileRules, line)
 		}
 	}
+	// possibly empty .tinignore so catch
+	if len(matcher.dirRules) != 0 || len(matcher.fileRules) != 0 {
+		// if we have values set it
+		matcher.used = true
+	}
 	return &matcher, nil
 }
 
@@ -50,7 +54,7 @@ root .tinignore file.
 */
 func (matcher *Matcher) Ignore(path string) bool {
 	// no need to check anything in this case
-	if matcher.empty {
+	if matcher.IsEmpty() {
 		return false
 	}
 	// start with directories as we always need to check these
@@ -81,7 +85,7 @@ func (matcher *Matcher) Ignore(path string) bool {
 IsEmpty can be used to see if the matcher contains any rules at all.
 */
 func (matcher *Matcher) IsEmpty() bool {
-	return matcher.empty
+	return !matcher.used
 }
 
 /*
