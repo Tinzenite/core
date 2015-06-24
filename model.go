@@ -44,13 +44,17 @@ type staticinfo struct {
 	Content        string
 }
 
-/*LoadModel todo*/
+/*
+LoadModel loads or creates a model for the given path, depending whether a
+model.json exists for it already. Also immediately builds the model for the
+first time and stores it.
+*/
 func LoadModel(path string) (*Model, error) {
 	if !IsTinzenite(path) {
 		return nil, ErrNotTinzenite
 	}
 	var m *Model
-	data, err := ioutil.ReadFile(path + "/" + TINZENITEDIR + "/" + "local" + "/" + "model.json")
+	data, err := ioutil.ReadFile(path + "/" + TINZENITEDIR + "/" + LOCAL + "/" + MODELJSON)
 	if err != nil {
 		// if error we must create a new one
 		m = &Model{
@@ -67,6 +71,7 @@ func LoadModel(path string) (*Model, error) {
 	// ensure that off line updates are caught (note that updatechan won't notify these)
 	err = m.Update()
 	if err != nil {
+		// explicitely return nil because it is a severe error
 		return nil, err
 	}
 	return m, nil
@@ -75,6 +80,7 @@ func LoadModel(path string) (*Model, error) {
 /*
 Update the complete model state. Will if successful try to store the model to
 disk at the end.
+
 TODO: check concurrency allowances?
 */
 func (m *Model) Update() error {
@@ -119,14 +125,21 @@ func (m *Model) Register(v chan UpdateMessage) {
 	m.updatechan = v
 }
 
-/*Read todo*/
+/*
+Read TODO
+
+Should return the JSON representation of this directory
+*/
 func (m *Model) Read() (*Objectinfo, error) {
 	/*TODO*/
 	return nil, ErrUnsupported
 }
 
+/*
+store the model to disk in the correct directory.
+*/
 func (m *Model) store() error {
-	dir := m.Root + "/" + TINZENITEDIR + "/" + "local"
+	dir := m.Root + "/" + TINZENITEDIR + "/" + LOCAL
 	err := makeDirectory(dir)
 	if err != nil {
 		return err
@@ -135,7 +148,7 @@ func (m *Model) store() error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(dir+"/model.json", jsonBinary, FILEPERMISSIONMODE)
+	return ioutil.WriteFile(dir+"/"+MODELJSON, jsonBinary, FILEPERMISSIONMODE)
 }
 
 /*
@@ -143,6 +156,7 @@ getInfo creates the Objectinfo for the given path, so long as the path is
 contained in m.Tracked. Directories are NOT traversed!
 */
 func (m *Model) getInfo(path string) (*Objectinfo, error) {
+	/*TODO incomplete yet*/
 	_, exists := m.Tracked[path]
 	if !exists {
 		return nil, ErrUntracked
@@ -182,7 +196,7 @@ func (m *Model) populate() (map[string]bool, error) {
 		return nil
 	})
 	// doesn't directly assign to m.tracked on purpose so that we can reuse this
-	// method elsewhere
+	// method elsewhere (for the current structure on m.Update())
 	return tracked, nil
 }
 
@@ -191,7 +205,9 @@ Apply changes to the internal model state. This method does the true logic on th
 model, not touching m.Tracked. NEVER call this method outside of m.Update()!
 */
 func (m *Model) apply(op Operation, path string) {
+	// whether to send an update on updatechan
 	notify := false
+	// object for notify
 	var infoToNotify staticinfo
 	switch op {
 	case Create:
@@ -263,13 +279,13 @@ func (m *Model) apply(op Operation, path string) {
 	}
 	// send the update message
 	if notify && m.updatechan != nil {
-		/*TODO select with default --> lost message? but we loose every update
+		/*TODO async select with default --> lost message? but we loose every update
 		after the first... hm*/
 		m.updatechan <- UpdateMessage{Operation: op, Object: infoToNotify}
 	}
 }
 
-/*TODO for now only lists all tracked files*/
+/*TODO for now only lists all tracked files for debug*/
 func (m *Model) String() string {
 	var list string
 	for path := range m.Tracked {

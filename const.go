@@ -28,6 +28,8 @@ const (
 	TINZENITEDIR  = ".tinzenite"
 	TINIGNORE     = ".tinignore"
 	DIRECTORYLIST = "directory.list"
+	LOCAL         = "local"
+	MODELJSON     = "model.json"
 )
 
 /*
