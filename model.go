@@ -1,6 +1,8 @@
 package core
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -8,13 +10,13 @@ import (
 
 /*Model TODO
 
-TODO tracked has bad performance once very large - replace with struct? Size
+TODO Tracked has bad performance once very large - replace with struct? Size
 argument in make seems not to make a difference.
 */
 type Model struct {
-	root       string
-	tracked    map[string]bool
-	objinfo    map[string]staticinfo
+	Root       string
+	Tracked    map[string]bool
+	Objinfo    map[string]staticinfo
 	updatechan chan UpdateMessage
 }
 
@@ -50,9 +52,9 @@ func LoadModel(path string) (*Model, error) {
 	/*TODO load if model available*/
 	// what follows is the code for a NEW model
 	m := &Model{
-		root:    path,
-		tracked: make(map[string]bool),
-		objinfo: make(map[string]staticinfo)}
+		Root:    path,
+		Tracked: make(map[string]bool),
+		Objinfo: make(map[string]staticinfo)}
 	// build first version (note that updatechan can't possibly be set already, so we won't spam UpdateMessages)
 	err := m.Update()
 	if err != nil {
@@ -71,7 +73,7 @@ func (m *Model) Update() error {
 	if err != nil {
 		return err
 	}
-	for path := range m.tracked {
+	for path := range m.Tracked {
 		_, ok := current[path]
 		if ok {
 			// paths that still exist must only be checked for MODIFY
@@ -86,16 +88,17 @@ func (m *Model) Update() error {
 	for path := range current {
 		created = append(created, path)
 	}
-	// update m.tracked
+	// update m.Tracked
 	for _, path := range removed {
-		delete(m.tracked, path)
+		delete(m.Tracked, path)
 		m.apply(Remove, path)
 	}
 	for _, path := range created {
-		m.tracked[path] = true
+		m.Tracked[path] = true
 		m.apply(Create, path)
 	}
-	return nil
+	// finally also store the model for future loads.
+	return m.store()
 }
 
 /*
@@ -113,15 +116,24 @@ func (m *Model) Read() (*Objectinfo, error) {
 }
 
 func (m *Model) store() error {
-	return ErrUnsupported
+	dir := m.Root + "/" + TINZENITEDIR + "/" + "local"
+	err := makeDirectory(dir)
+	if err != nil {
+		return err
+	}
+	jsonBinary, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(dir+"/model.json", jsonBinary, FILEPERMISSIONMODE)
 }
 
 /*
 getInfo creates the Objectinfo for the given path, so long as the path is
-contained in m.tracked. Directories are NOT traversed!
+contained in m.Tracked. Directories are NOT traversed!
 */
 func (m *Model) getInfo(path string) (*Objectinfo, error) {
-	_, exists := m.tracked[path]
+	_, exists := m.Tracked[path]
 	if !exists {
 		return nil, ErrUntracked
 	}
@@ -142,12 +154,12 @@ func (m *Model) getInfo(path string) (*Objectinfo, error) {
 populate a map[path] for the m.root path. Applies the root Matcher if provided.
 */
 func (m *Model) populate() (map[string]bool, error) {
-	match, err := CreateMatcher(m.root)
+	match, err := CreateMatcher(m.Root)
 	if err != nil {
 		return nil, err
 	}
 	tracked := make(map[string]bool)
-	filepath.Walk(m.root, func(subpath string, stat os.FileInfo, inerr error) error {
+	filepath.Walk(m.Root, func(subpath string, stat os.FileInfo, inerr error) error {
 		// ignore on match
 		if match.Ignore(subpath) {
 			// SkipDir is okay even if file
@@ -166,7 +178,7 @@ func (m *Model) populate() (map[string]bool, error) {
 
 /*
 Apply changes to the internal model state. This method does the true logic on the
-model, not touching m.tracked. NEVER call this method outside of m.Update()!
+model, not touching m.Tracked. NEVER call this method outside of m.Update()!
 */
 func (m *Model) apply(op Operation, path string) {
 	notify := false
@@ -198,10 +210,10 @@ func (m *Model) apply(op Operation, path string) {
 			Version:        make(map[string]int),
 			Directory:      stat.IsDir(),
 			Content:        hash}
-		m.objinfo[path] = stin
+		m.Objinfo[path] = stin
 		infoToNotify = stin
 	case Modify:
-		stin, ok := m.objinfo[path]
+		stin, ok := m.Objinfo[path]
 		if !ok {
 			log.Println("staticinfo lookup failed!")
 			return
@@ -223,18 +235,19 @@ func (m *Model) apply(op Operation, path string) {
 		notify = true
 		// update
 		stin.Content = hash
-		m.objinfo[path] = stin
+		m.Objinfo[path] = stin
 		// TODO update version
 		infoToNotify = stin
 	case Remove:
+		/*TODO: delete logic for multiple peers required!*/
 		notify = true
 		var ok bool
-		infoToNotify, ok = m.objinfo[path]
+		infoToNotify, ok = m.Objinfo[path]
 		if !ok {
 			log.Println("staticinfo lookup failed!")
 			notify = false
 		}
-		delete(m.objinfo, path)
+		delete(m.Objinfo, path)
 	default:
 		log.Printf("Unimplemented %s for now!\n", op)
 	}
@@ -249,7 +262,7 @@ func (m *Model) apply(op Operation, path string) {
 /*TODO for now only lists all tracked files*/
 func (m *Model) String() string {
 	var list string
-	for path := range m.tracked {
+	for path := range m.Tracked {
 		list += path + "\n"
 	}
 	return list
