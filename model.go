@@ -54,7 +54,7 @@ func LoadModel(path string) (*Model, error) {
 		tracked: make(map[string]bool),
 		objinfo: make(map[string]staticinfo)}
 	// build first version (note that updatechan can't possibly be set already, so we won't spam UpdateMessages)
-	_, err := m.Update()
+	err := m.Update()
 	if err != nil {
 		return nil, err
 	}
@@ -65,12 +65,11 @@ func LoadModel(path string) (*Model, error) {
 Update the complete model state.
 TODO: check concurrency allowances?
 */
-func (m *Model) Update() (bool, error) {
+func (m *Model) Update() error {
 	current, err := m.populate()
 	var removed, created []string
-	updated := false
 	if err != nil {
-		return false, err
+		return err
 	}
 	for path := range m.tracked {
 		_, ok := current[path]
@@ -81,13 +80,11 @@ func (m *Model) Update() (bool, error) {
 		} else {
 			// REMOVED - paths that don't exist anymore have been removed
 			removed = append(removed, path)
-			updated = true
 		}
 	}
 	// CREATED - any remaining paths are yet untracked in m.tracked
 	for path := range current {
 		created = append(created, path)
-		updated = true
 	}
 	// update m.tracked
 	for _, path := range removed {
@@ -98,7 +95,7 @@ func (m *Model) Update() (bool, error) {
 		m.tracked[path] = true
 		m.apply(Create, path)
 	}
-	return updated, nil
+	return nil
 }
 
 /*
@@ -173,6 +170,7 @@ model, not touching m.tracked. NEVER call this method outside of m.Update()!
 */
 func (m *Model) apply(op Operation, path string) {
 	notify := false
+	var infoToNotify staticinfo
 	switch op {
 	case Create:
 		notify = true
@@ -201,10 +199,15 @@ func (m *Model) apply(op Operation, path string) {
 			Directory:      stat.IsDir(),
 			Content:        hash}
 		m.objinfo[path] = stin
+		infoToNotify = stin
 	case Modify:
 		stin, ok := m.objinfo[path]
 		if !ok {
 			log.Println("staticinfo lookup failed!")
+			return
+		}
+		// no need for further work here
+		if stin.Directory {
 			return
 		}
 		hash, err := contentHash(path)
@@ -220,9 +223,18 @@ func (m *Model) apply(op Operation, path string) {
 		notify = true
 		// update
 		stin.Content = hash
+		m.objinfo[path] = stin
 		// TODO update version
+		infoToNotify = stin
 	case Remove:
 		notify = true
+		var ok bool
+		infoToNotify, ok = m.objinfo[path]
+		if !ok {
+			log.Println("staticinfo lookup failed!")
+			notify = false
+		}
+		delete(m.objinfo, path)
 	default:
 		log.Printf("Unimplemented %s for now!\n", op)
 	}
@@ -230,7 +242,7 @@ func (m *Model) apply(op Operation, path string) {
 	if notify && m.updatechan != nil {
 		/*TODO select with default --> lost message? but we loose every update
 		after the first... hm*/
-		m.updatechan <- UpdateMessage{Operation: op}
+		m.updatechan <- UpdateMessage{Operation: op, Object: infoToNotify}
 	}
 }
 
