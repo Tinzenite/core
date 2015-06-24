@@ -1,6 +1,7 @@
 package core
 
 import (
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -34,16 +35,43 @@ func LoadModel(path string) (*Model, error) {
 	if !IsTinzenite(path) {
 		return nil, ErrNotTinzenite
 	}
+	/*TODO load if model available*/
 	m := &Model{
 		root:    path,
 		tracked: make(map[string]bool)}
-	return m, m.populate()
+	tracked, err := m.populate()
+	if err != nil {
+		return nil, err
+	}
+	m.tracked = tracked
+	return m, nil
 }
 
 /*Update todo*/
 func (m *Model) Update() (bool, error) {
-	/*TODO*/
-	return false, ErrUnsupported
+	current, err := m.populate()
+	updated := false
+	if err != nil {
+		return false, err
+	}
+	for path := range m.tracked {
+		_, ok := current[path]
+		if ok {
+			// remove if ok
+			/*TODO here check if CONTENT different*/
+			delete(current, path)
+		} else {
+			// REMOVED
+			log.Println("REMOVED: " + path)
+			updated = true
+		}
+	}
+	// CREATED
+	for path := range current {
+		log.Println("CREATED: " + path)
+		updated = true
+	}
+	return updated, nil
 }
 
 /*Register todo*/
@@ -61,10 +89,10 @@ func (m *Model) store() error {
 	return ErrUnsupported
 }
 
-func (m *Model) getInfo(path string) *Objectinfo {
+func (m *Model) getInfo(path string) (*Objectinfo, error) {
 	_, exists := m.tracked[path]
 	if !exists {
-		return nil
+		return nil, ErrUntracked
 	}
 	/*TODO:
 	- build object
@@ -72,14 +100,15 @@ func (m *Model) getInfo(path string) *Objectinfo {
 	- dirs with content can be filled on Read(), right? Only need to place the
 	  pointers correctly then.
 	*/
-	return nil
+	return nil, nil
 }
 
-func (m *Model) populate() error {
+func (m *Model) populate() (map[string]bool, error) {
 	match, err := CreateMatcher(m.root)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	tracked := make(map[string]bool)
 	filepath.Walk(m.root, func(subpath string, stat os.FileInfo, inerr error) error {
 		// ignore on match
 		if match.Ignore(subpath) {
@@ -89,10 +118,12 @@ func (m *Model) populate() error {
 			}
 			return nil
 		}
-		m.tracked[subpath] = true
+		tracked[subpath] = true
 		return nil
 	})
-	return nil
+	// doesn't directly assign to m.tracked on purpose so that we can reuse this
+	// method elsewhere
+	return tracked, nil
 }
 
 /*TODO for now only lists all tracked files*/

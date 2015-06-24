@@ -10,6 +10,7 @@ var (
 	ErrIsTinzenite  = errors.New("Already a Tinzenite directory!")
 	ErrNotTinzenite = errors.New("Path is not valid Tinzenite directory!")
 	ErrNoTinIgnore  = errors.New("No .tinignore file found!")
+	ErrUntracked    = errors.New("Object is not tracked in the model!")
 )
 
 // constant value here
