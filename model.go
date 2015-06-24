@@ -50,6 +50,7 @@ func LoadModel(path string) (*Model, error) {
 /*Update todo*/
 func (m *Model) Update() (bool, error) {
 	current, err := m.populate()
+	var removed, created []string
 	updated := false
 	if err != nil {
 		return false, err
@@ -57,19 +58,28 @@ func (m *Model) Update() (bool, error) {
 	for path := range m.tracked {
 		_, ok := current[path]
 		if ok {
-			// remove if ok
+			// paths that still exist must only be checked for MODIFY
 			/*TODO here check if CONTENT different*/
 			delete(current, path)
 		} else {
-			// REMOVED
-			log.Println("REMOVED: " + path)
+			// REMOVED - paths that don't exist anymore have been removed
+			removed = append(removed, path)
 			updated = true
 		}
 	}
-	// CREATED
+	// CREATED - any remaining paths are yet untracked in m.tracked
 	for path := range current {
-		log.Println("CREATED: " + path)
+		created = append(created, path)
 		updated = true
+	}
+	// update m.tracked
+	for _, path := range removed {
+		delete(m.tracked, path)
+		log.Println("REMOVED: " + path)
+	}
+	for _, path := range created {
+		m.tracked[path] = true
+		log.Println("CREATED: " + path)
 	}
 	return updated, nil
 }
