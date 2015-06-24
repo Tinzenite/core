@@ -6,16 +6,15 @@ import (
 	"path/filepath"
 )
 
-/*TODO: make everything private*/
+/*Model TODO
 
-/*Model todo*/
+TODO tracked has bad performance once very large - replace with struct? Size
+argument in make seems not to make a difference.
+*/
 type Model struct {
-	root string
-	/*
-	   TODO bad performance once very large - replace with struct? Size argument
-	   in make seems not to make a difference.
-	*/
+	root       string
 	tracked    map[string]bool
+	objinfo    []staticinfo
 	updatechan chan UpdateMessage
 }
 
@@ -31,20 +30,33 @@ type Objectinfo struct {
 	Content string `json:",omitempty"`
 }
 
+/*
+staticinfo stores all information that Tinzenite must keep between calls to
+m.Update(). This includes the object ID and version for reapplication, plus
+the content hash if required for file content changes detection.
+*/
+type staticinfo struct {
+	Identification string
+	Version        map[string]int
+	Directory      bool
+	Content        string
+}
+
 /*LoadModel todo*/
 func LoadModel(path string) (*Model, error) {
 	if !IsTinzenite(path) {
 		return nil, ErrNotTinzenite
 	}
 	/*TODO load if model available*/
+	// what follows is the code for a NEW model
 	m := &Model{
 		root:    path,
 		tracked: make(map[string]bool)}
-	tracked, err := m.populate()
+	// build first version (note that updatechan can't possibly be set already, so we won't spam UpdateMessages)
+	_, err := m.Update()
 	if err != nil {
 		return nil, err
 	}
-	m.tracked = tracked
 	return m, nil
 }
 
@@ -106,20 +118,31 @@ func (m *Model) store() error {
 	return ErrUnsupported
 }
 
+/*
+getInfo creates the Objectinfo for the given path, so long as the path is
+contained in m.tracked. Directories are NOT traversed!
+*/
 func (m *Model) getInfo(path string) (*Objectinfo, error) {
 	_, exists := m.tracked[path]
 	if !exists {
 		return nil, ErrUntracked
 	}
-	/*TODO:
-	- build object
-	- what about children? Does this method only return empty dir and files?
-	- dirs with content can be filled on Read(), right? Only need to place the
-	  pointers correctly then.
-	*/
-	return nil, nil
+	stat, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	// TODO lots still to do here!
+	object := &Objectinfo{Path: path}
+	if stat.IsDir() {
+		object.directory = true
+	}
+	// TODO apply staticinfo!
+	return object, ErrUnsupported
 }
 
+/*
+populate a map[path] for the m.root path. Applies the root Matcher if provided.
+*/
 func (m *Model) populate() (map[string]bool, error) {
 	match, err := CreateMatcher(m.root)
 	if err != nil {
@@ -145,15 +168,26 @@ func (m *Model) populate() (map[string]bool, error) {
 
 /*
 Apply changes to the internal model state. This method does the true logic on the
-model, not touching m.tracked.
+model, not touching m.tracked. NEVER call this method outside of m.Update()!
 */
 func (m *Model) apply(op Operation, path string) {
-	// TEMP: ignore
-	if op == Modify {
-		return
+	notify := false
+	switch op {
+	case Create:
+		log.Printf("C: Doing %s on %s\n", op, path)
+		notify = true
+	case Modify:
+		// log.Printf("M: Doing %s on %s\n", op, path)
+	case Remove:
+		log.Printf("R: Doing %s on %s\n", op, path)
+		notify = true
+	default:
+		log.Printf("Unimplemented %s for now!\n", op)
 	}
-	log.Printf("Doing %s on %s\n", op, path)
-	if m.updatechan != nil {
+	// send the update message
+	if notify && m.updatechan != nil {
+		/*TODO select with default --> lost message? but we loose every update
+		after the first... hm*/
 		m.updatechan <- UpdateMessage{Operation: op}
 	}
 }
