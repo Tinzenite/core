@@ -15,7 +15,8 @@ type Model struct {
 	   TODO bad performance once very large - replace with struct? Size argument
 	   in make seems not to make a difference.
 	*/
-	tracked map[string]bool
+	tracked    map[string]bool
+	updatechan chan UpdateMessage
 }
 
 /*Objectinfo todo*/
@@ -47,7 +48,10 @@ func LoadModel(path string) (*Model, error) {
 	return m, nil
 }
 
-/*Update todo*/
+/*
+Update the complete model state.
+TODO: check concurrency allowances?
+*/
 func (m *Model) Update() (bool, error) {
 	current, err := m.populate()
 	var removed, created []string
@@ -59,8 +63,8 @@ func (m *Model) Update() (bool, error) {
 		_, ok := current[path]
 		if ok {
 			// paths that still exist must only be checked for MODIFY
-			/*TODO here check if CONTENT different*/
 			delete(current, path)
+			m.apply(Modify, path)
 		} else {
 			// REMOVED - paths that don't exist anymore have been removed
 			removed = append(removed, path)
@@ -75,18 +79,21 @@ func (m *Model) Update() (bool, error) {
 	// update m.tracked
 	for _, path := range removed {
 		delete(m.tracked, path)
-		log.Println("REMOVED: " + path)
+		m.apply(Remove, path)
 	}
 	for _, path := range created {
 		m.tracked[path] = true
-		log.Println("CREATED: " + path)
+		m.apply(Create, path)
 	}
 	return updated, nil
 }
 
-/*Register todo*/
-func (m *Model) Register(v chan Objectinfo) {
-	/*TODO*/
+/*
+Register the channel over which UpdateMessage can be received. Tinzenite will
+only ever write to this channel, never read.
+*/
+func (m *Model) Register(v chan UpdateMessage) {
+	m.updatechan = v
 }
 
 /*Read todo*/
@@ -134,6 +141,17 @@ func (m *Model) populate() (map[string]bool, error) {
 	// doesn't directly assign to m.tracked on purpose so that we can reuse this
 	// method elsewhere
 	return tracked, nil
+}
+
+func (m *Model) apply(op Operation, path string) {
+	// TEMP: ignore
+	if op == Modify {
+		return
+	}
+	log.Printf("Doing %s on %s\n", op, path)
+	if m.updatechan != nil {
+		log.Println("Updating on channel!")
+	}
 }
 
 /*TODO for now only lists all tracked files*/

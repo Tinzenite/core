@@ -51,3 +51,32 @@ func (communicationMethod CommunicationMethod) String() string {
 		return "None"
 	}
 }
+
+/*
+Operation is the enumeration for the possible protocol operations.
+*/
+type Operation int
+
+const (
+	/*Unknown operation.*/
+	Unknown = iota
+	/*Create operation.*/
+	Create
+	/*Modify operation.*/
+	Modify
+	/*Remove operation.*/
+	Remove
+)
+
+func (op Operation) String() string {
+	switch op {
+	case Create:
+		return "create"
+	case Modify:
+		return "modify"
+	case Remove:
+		return "remove"
+	default:
+		return "unknown"
+	}
+}
