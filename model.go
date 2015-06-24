@@ -14,7 +14,7 @@ argument in make seems not to make a difference.
 type Model struct {
 	root       string
 	tracked    map[string]bool
-	objinfo    []staticinfo
+	objinfo    map[string]staticinfo
 	updatechan chan UpdateMessage
 }
 
@@ -51,7 +51,8 @@ func LoadModel(path string) (*Model, error) {
 	// what follows is the code for a NEW model
 	m := &Model{
 		root:    path,
-		tracked: make(map[string]bool)}
+		tracked: make(map[string]bool),
+		objinfo: make(map[string]staticinfo)}
 	// build first version (note that updatechan can't possibly be set already, so we won't spam UpdateMessages)
 	_, err := m.Update()
 	if err != nil {
@@ -174,12 +175,53 @@ func (m *Model) apply(op Operation, path string) {
 	notify := false
 	switch op {
 	case Create:
-		log.Printf("C: Doing %s on %s\n", op, path)
 		notify = true
+		// fetch all values we'll need to store
+		id, err := newIdentifier()
+		if err != nil {
+			log.Println(err.Error())
+			return
+		}
+		stat, err := os.Lstat(path)
+		if err != nil {
+			log.Println(err.Error())
+			return
+		}
+		hash := ""
+		if !stat.IsDir() {
+			hash, err = contentHash(path)
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
+		}
+		stin := staticinfo{
+			Identification: id,
+			Version:        make(map[string]int),
+			Directory:      stat.IsDir(),
+			Content:        hash}
+		m.objinfo[path] = stin
 	case Modify:
-		// log.Printf("M: Doing %s on %s\n", op, path)
+		stin, ok := m.objinfo[path]
+		if !ok {
+			log.Println("staticinfo lookup failed!")
+			return
+		}
+		hash, err := contentHash(path)
+		if err != nil {
+			log.Println(err.Error())
+			return
+		}
+		// if same --> no changes, so done
+		if hash == stin.Content {
+			return
+		}
+		// otherwise a change has happened
+		notify = true
+		// update
+		stin.Content = hash
+		// TODO update version
 	case Remove:
-		log.Printf("R: Doing %s on %s\n", op, path)
 		notify = true
 	default:
 		log.Printf("Unimplemented %s for now!\n", op)
