@@ -143,6 +143,10 @@ func (m *Model) populate() (map[string]bool, error) {
 	return tracked, nil
 }
 
+/*
+Apply changes to the internal model state. This method does the true logic on the
+model, not touching m.tracked.
+*/
 func (m *Model) apply(op Operation, path string) {
 	// TEMP: ignore
 	if op == Modify {
@@ -150,7 +154,7 @@ func (m *Model) apply(op Operation, path string) {
 	}
 	log.Printf("Doing %s on %s\n", op, path)
 	if m.updatechan != nil {
-		log.Println("Updating on channel!")
+		m.updatechan <- UpdateMessage{Operation: op}
 	}
 }
 
