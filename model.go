@@ -49,14 +49,23 @@ func LoadModel(path string) (*Model, error) {
 	if !IsTinzenite(path) {
 		return nil, ErrNotTinzenite
 	}
-	/*TODO load if model available*/
-	// what follows is the code for a NEW model
-	m := &Model{
-		Root:    path,
-		Tracked: make(map[string]bool),
-		Objinfo: make(map[string]staticinfo)}
-	// build first version (note that updatechan can't possibly be set already, so we won't spam UpdateMessages)
-	err := m.Update()
+	var m *Model
+	data, err := ioutil.ReadFile(path + "/" + TINZENITEDIR + "/" + "local" + "/" + "model.json")
+	if err != nil {
+		// if error we must create a new one
+		m = &Model{
+			Root:    path,
+			Tracked: make(map[string]bool),
+			Objinfo: make(map[string]staticinfo)}
+	} else {
+		// load as json
+		err = json.Unmarshal(data, &m)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// ensure that off line updates are caught (note that updatechan won't notify these)
+	err = m.Update()
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +73,8 @@ func LoadModel(path string) (*Model, error) {
 }
 
 /*
-Update the complete model state.
+Update the complete model state. Will if successful try to store the model to
+disk at the end.
 TODO: check concurrency allowances?
 */
 func (m *Model) Update() error {
