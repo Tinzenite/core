@@ -131,7 +131,8 @@ Read TODO
 Should return the JSON representation of this directory
 */
 func (m *Model) Read() (*Objectinfo, error) {
-	/*TODO*/
+	/*TODO this can be massively parallelized: call getInfo for all objects
+	with multiple go routines, then construct the tree afterwards.*/
 	return nil, ErrUnsupported
 }
 
