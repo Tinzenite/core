@@ -12,74 +12,45 @@ import (
 )
 
 type relativePath struct {
-	root    string
-	subpath string
+	stack []string
+	limit int
 }
 
-func createPath(rootpath string) *relativePath {
-	rootpath = strings.TrimSuffix(rootpath, "/")
-	return &relativePath{root: rootpath,
-		subpath: ""}
+func createPath(root string) *relativePath {
+	r := relativePath{}
+	list := strings.Split(root, "/")
+	for _, element := range list {
+		if element != "" {
+			r.stack = append(r.stack, element)
+		}
+	}
+	r.limit = len(r.stack)
+	return &r
 }
 
 func (r *relativePath) FullPath() string {
-	if r.subpath == "" {
-		return r.root
-	}
-	return r.root + "/" + r.subpath
-}
-
-func (r *relativePath) Root() string {
-	return r.root
-}
-
-func (r *relativePath) Subpath() string {
-	return "/" + r.subpath
-}
-
-func (r *relativePath) Down(step string) *relativePath {
-	step = strings.Trim(step, "/")
-	newPath := &relativePath{root: r.root, subpath: r.subpath}
-	if r.subpath == "" {
-		newPath.subpath = step
-	} else {
-		newPath.subpath = r.subpath + "/" + step
-	}
-	return newPath
-}
-
-func (r *relativePath) Up() *relativePath {
-	newPath := &relativePath{root: r.root, subpath: r.subpath}
-	index := strings.LastIndex(r.subpath, "/")
-	if index < 0 {
-		return newPath
-	}
-	newPath.subpath = r.subpath[:index]
-	return newPath
+	return "/" + strings.Join(r.stack, "/")
 }
 
 func (r *relativePath) LastElement() string {
-	index := strings.LastIndex(r.FullPath(), "/")
-	if index < 0 {
-		return "/"
-	}
-	return r.FullPath()[index+1:]
+	return r.stack[len(r.stack)-1]
+}
+
+func (r *relativePath) Subpath() string {
+	return strings.Join(r.stack[r.limit:], "/")
 }
 
 func (r *relativePath) Apply(path string) *relativePath {
-	newPath := &relativePath{root: r.root, subpath: r.subpath}
-	if strings.HasPrefix(path, r.root+"/") {
-		newPath.subpath = strings.TrimPrefix(path, r.root+"/")
+	if strings.HasPrefix(path, r.FullPath()) {
+		relPath := createPath(path)
+		relPath.limit = r.limit
+		return relPath
 	}
-	return newPath
+	return &relativePath{limit: r.limit, stack: r.stack}
 }
 
-func (r *relativePath) Validate() bool {
-	_, err := os.Lstat(r.FullPath())
-	if err != nil {
-		return false
-	}
-	return true
+func (r *relativePath) Depth() int {
+	return len(r.stack)
 }
 
 /*

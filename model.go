@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"time"
+	"sort"
 )
 
 /*Model TODO
@@ -43,6 +43,23 @@ type staticinfo struct {
 	Version        map[string]int
 	Directory      bool
 	Content        string
+}
+
+type sortable []*Objectinfo
+
+// Len is part of sort.Interface.
+func (s sortable) Len() int {
+	return len(s)
+}
+
+// Swap is part of sort.Interface.
+func (s sortable) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+// Less is part of sort.Interface.
+func (s sortable) Less(i, j int) bool {
+	return s[i].Path < s[j].Path
 }
 
 /*
@@ -132,11 +149,9 @@ Read TODO
 Should return the JSON representation of this directory
 */
 func (m *Model) Read() (*Objectinfo, error) {
-	/*TODO this can be massively parallelized: call getInfo for all objects
-	with multiple go routines, then construct the tree afterwards.*/
-	start := time.Now()
-	var allObjs []*Objectinfo
+	var allObjs sortable
 	rpath := createPath(m.Root)
+	// getting all Objectinfos is very fast because the staticinfo already exists for all of them
 	for fullpath := range m.Tracked {
 		obj, err := m.getInfo(rpath.Apply(fullpath))
 		if err != nil {
@@ -145,9 +160,13 @@ func (m *Model) Read() (*Objectinfo, error) {
 		}
 		allObjs = append(allObjs, obj)
 	}
-	elapsed := time.Since(start)
-	log.Printf("Took %s\n", elapsed)
-	return allObjs[2], nil
+	// sort so that we can linearly run through based on the path
+	sort.Sort(allObjs)
+	// build the tree!
+	root := allObjs[0]
+	/*TODO build tree recursively*/
+	m.fillInfo(root, allObjs)
+	return root, nil
 }
 
 /*
@@ -201,6 +220,18 @@ func (m *Model) getInfo(path *relativePath) (*Objectinfo, error) {
 		object.Content = stin.Content
 	}
 	return object, nil
+}
+
+func (m *Model) fillInfo(root *Objectinfo, all []*Objectinfo) {
+	rpath := createPath(m.Root + "/" + root.Path)
+	for _, obj := range all {
+		if obj == root {
+			log.Println("Skipping cause same!")
+			continue
+		}
+		path := rpath.Apply(m.Root + "/" + obj.Path)
+		log.Printf("Path: %s\nDepth: %d\n", path.FullPath(), path.Depth())
+	}
 }
 
 /*
