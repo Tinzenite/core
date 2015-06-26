@@ -133,7 +133,17 @@ Should return the JSON representation of this directory
 func (m *Model) Read() (*Objectinfo, error) {
 	/*TODO this can be massively parallelized: call getInfo for all objects
 	with multiple go routines, then construct the tree afterwards.*/
-	return nil, ErrUnsupported
+	var allObjs []*Objectinfo
+	rpath := createPath(m.Root)
+	for fullpath := range m.Tracked {
+		obj, err := m.getInfo(rpath.Apply(fullpath))
+		if err != nil {
+			log.Println(err.Error())
+			continue
+		}
+		allObjs = append(allObjs, obj)
+	}
+	return allObjs[2], nil
 }
 
 /*
@@ -156,23 +166,35 @@ func (m *Model) store() error {
 getInfo creates the Objectinfo for the given path, so long as the path is
 contained in m.Tracked. Directories are NOT traversed!
 */
-func (m *Model) getInfo(path string) (*Objectinfo, error) {
-	/*TODO incomplete yet*/
-	_, exists := m.Tracked[path]
+func (m *Model) getInfo(path *relativePath) (*Objectinfo, error) {
+	_, exists := m.Tracked[path.FullPath()]
 	if !exists {
 		return nil, ErrUntracked
 	}
-	stat, err := os.Lstat(path)
+	// get staticinfo
+	stin, exists := m.Objinfo[path.FullPath()]
+	if !exists {
+		return nil, ErrUntracked
+	}
+	stat, err := os.Lstat(path.FullPath())
 	if err != nil {
 		return nil, err
 	}
-	// TODO lots still to do here!
-	object := &Objectinfo{Path: path}
+	// build object
+	object := &Objectinfo{
+		Identification: stin.Identification,
+		Name:           path.LastElement(),
+		Path:           path.Subpath(),
+		Shadow:         false,
+		Version:        make(map[string]int)}
 	if stat.IsDir() {
 		object.directory = true
+		object.Content = ""
+	} else {
+		object.directory = false
+		object.Content = stin.Content
 	}
-	// TODO apply staticinfo!
-	return object, ErrUnsupported
+	return object, nil
 }
 
 /*

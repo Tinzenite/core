@@ -69,7 +69,7 @@ func (r *relativePath) LastElement() string {
 func (r *relativePath) Apply(path string) *relativePath {
 	newPath := &relativePath{root: r.root, subpath: r.subpath}
 	if strings.HasPrefix(path, r.root) {
-		newPath.subpath = strings.TrimPrefix(path, r.root)
+		newPath.subpath = strings.TrimPrefix(path, r.root+"/")
 	}
 	return newPath
 }
