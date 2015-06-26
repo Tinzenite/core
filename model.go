@@ -46,20 +46,19 @@ type staticinfo struct {
 	Content        string
 }
 
+// sortable allows sorting Objectinfos by path.
 type sortable []*Objectinfo
 
-// Len is part of sort.Interface.
 func (s sortable) Len() int {
 	return len(s)
 }
 
-// Swap is part of sort.Interface.
 func (s sortable) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
-// Less is part of sort.Interface.
 func (s sortable) Less(i, j int) bool {
+	// path are sorted alphabetically all by themselves! :D
 	return s[i].Path < s[j].Path
 }
 
@@ -145,9 +144,9 @@ func (m *Model) Register(v chan UpdateMessage) {
 }
 
 /*
-Read TODO
-
-Should return the JSON representation of this directory
+Read builds the complete Objectinfo representation of this model to its full
+depth. Incredibly fast because we only link objects based on the current state
+of the model: hashes etc are not recalculated.
 */
 func (m *Model) Read() (*Objectinfo, error) {
 	var allObjs sortable
@@ -165,7 +164,7 @@ func (m *Model) Read() (*Objectinfo, error) {
 	sort.Sort(allObjs)
 	// build the tree!
 	root := allObjs[0]
-	/*TODO build tree recursively*/
+	/*build tree recursively*/
 	m.fillInfo(root, allObjs)
 	return root, nil
 }
@@ -223,10 +222,13 @@ func (m *Model) getInfo(path *relativePath) (*Objectinfo, error) {
 	return object, nil
 }
 
+/*
+fillInfo takes an Objectinfo and a list of candidates and recursively fills its
+Objects slice. If root is a file it simply returns root.
+*/
 func (m *Model) fillInfo(root *Objectinfo, all []*Objectinfo) *Objectinfo {
 	if !root.directory {
 		// this may be an error, check later
-		log.Println("Reached file.")
 		return root
 	}
 	rpath := createPath(m.Root + "/" + root.Path)
@@ -242,19 +244,19 @@ func (m *Model) fillInfo(root *Objectinfo, all []*Objectinfo) *Objectinfo {
 		}
 		if !strings.Contains(path.FullPath(), rpath.FullPath()) {
 			// not in my directory
-			log.Println("Not in mine!")
+			log.Println("Not in mine!") // leave this line until you figure out why it never runs into this...
 			continue
 		}
 		// if reached the object is in our subdir, so add and recursively fill
 		root.Objects = append(root.Objects, m.fillInfo(obj, all))
-		// log.Printf("Depth: %d vs %d\nPath: %s", rpath.Depth(), path.Depth(), path.FullPath())
 	}
-	log.Println("Finished dir.")
 	return root
 }
 
 /*
 populate a map[path] for the m.root path. Applies the root Matcher if provided.
+
+TODO: need to be capable of applying sub Matchers...
 */
 func (m *Model) populate() (map[string]bool, error) {
 	match, err := CreateMatcher(m.Root)
@@ -358,8 +360,6 @@ func (m *Model) apply(op Operation, path string) {
 	}
 	// send the update message
 	if notify && m.updatechan != nil {
-		/*TODO async select with default --> lost message? but we loose every update
-		after the first... hm*/
 		m.updatechan <- UpdateMessage{Operation: op, Object: infoToNotify}
 	}
 }
