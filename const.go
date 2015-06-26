@@ -6,11 +6,12 @@ import "errors"
 Errors of Tinzenite.
 */
 var (
-	ErrUnsupported  = errors.New("Feature currently unsupported!")
-	ErrIsTinzenite  = errors.New("Already a Tinzenite directory!")
-	ErrNotTinzenite = errors.New("Path is not valid Tinzenite directory!")
-	ErrNoTinIgnore  = errors.New("No .tinignore file found!")
-	ErrUntracked    = errors.New("Object is not tracked in the model!")
+	ErrUnsupported      = errors.New("Feature currently unsupported!")
+	ErrIsTinzenite      = errors.New("Already a Tinzenite directory!")
+	ErrNotTinzenite     = errors.New("Path is not valid Tinzenite directory!")
+	ErrNoTinIgnore      = errors.New("No .tinignore file found!")
+	ErrUntracked        = errors.New("Object is not tracked in the model!")
+	ErrNilInternalState = errors.New("Internal state has illegal NIL values!")
 )
 
 // constant value here

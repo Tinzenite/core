@@ -9,6 +9,7 @@ type Peer struct {
 	Protocol       CommunicationMethod
 	Encrypted      bool
 	identification string
+	initialized    bool
 }
 
 /*

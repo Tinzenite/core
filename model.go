@@ -105,8 +105,7 @@ TODO Get concurrency to work here. Last time I had trouble with the Objinfo map.
 */
 func (m *Model) Update() error {
 	if m.Tracked == nil || m.Objinfo == nil {
-		log.Println("NIL error!")
-		return nil
+		return ErrNilInternalState
 	}
 	current, err := m.populate()
 	var removed, created []string

@@ -138,6 +138,7 @@ func (tinzenite *Tinzenite) Address() string {
 Close cleanly stores everything and shuts Tinzenite down.
 */
 func (tinzenite *Tinzenite) Close() {
+	/*TODO should I really update again? Maybe just call store explicitely?*/
 	tinzenite.model.Update()
 	tinzenite.channel.Close()
 }
@@ -176,6 +177,11 @@ func (tinzenite *Tinzenite) CallbackNewConnection(address, message string) {
 	if err != nil {
 		log.Println(err.Error())
 	}
+	/*TODO actually this should be read from disk once the peer has synced... oO */
+	tinzenite.allPeers = append(tinzenite.allPeers, &Peer{
+		Name:     "Unknown",
+		Address:  address,
+		Protocol: Tox})
 }
 
 /*
@@ -184,6 +190,7 @@ CallbackMessage is called when a message is received.
 func (tinzenite *Tinzenite) CallbackMessage(address, message string) {
 	log.Printf("Message from <%s> with message <%s>\n", address, message)
 	tinzenite.channel.Send(address, "ACK")
+	/*TODO switch if request or update*/
 }
 
 /*
