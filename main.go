@@ -1,8 +1,6 @@
 package core
 
 import (
-	"encoding/json"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/user"
@@ -56,10 +54,14 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 	if err != nil {
 		return nil, err
 	}
-	peer, err := CreatePeer(peername, address)
+	peerhash, err := newIdentifier()
 	if err != nil {
 		return nil, err
 	}
+	peer := &Peer{Name: peername,
+		Address:        address,
+		Protocol:       Tox,
+		identification: peerhash}
 	tinzenite.selfpeer = peer
 	tinzenite.allPeers = []*Peer{peer}
 	// save
@@ -162,7 +164,7 @@ func (t *Tinzenite) write() error {
 	root := t.Path + "/" + TINZENITEDIR
 	// build directory structure
 	err := makeDirectories(root,
-		"org/peers", "temp", "removed", "local")
+		ORGDIR+"/peers", "temp", "removed", LOCAL)
 	if err != nil {
 		return err
 	}
@@ -173,12 +175,7 @@ func (t *Tinzenite) write() error {
 			return err
 		}
 	}
-	// write auth file
-	data, err := json.MarshalIndent(t.auth, "", "  ")
-	if err != nil {
-		return err
-	}
-	return ioutil.WriteFile(root+"/org/auth.json", data, FILEPERMISSIONMODE)
+	return t.auth.store(t.Path)
 }
 
 /*

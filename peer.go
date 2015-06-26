@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"io/ioutil"
+	"log"
 )
 
 /*
@@ -18,28 +19,38 @@ type Peer struct {
 }
 
 /*
-CreatePeer creates a new object. For now always of type Tox.
+loadPeers loads all peers for the given tinzenite root path.
 */
-func CreatePeer(name string, address string) (*Peer, error) {
-	id, err := newIdentifier()
+func loadPeers(root string) ([]*Peer, error) {
+	peersFiles, err := ioutil.ReadDir(root + "/" + ORGDIR + "/" + PEERSDIR)
 	if err != nil {
 		return nil, err
 	}
-	return &Peer{
-		Name:           name,
-		Address:        address,
-		Protocol:       Tox,
-		Encrypted:      false,
-		identification: id}, nil
+	var peers []*Peer
+	for _, stat := range peersFiles {
+		data, err := ioutil.ReadFile(root + "/" + ORGDIR + "/" + PEERSDIR + "/" + stat.Name())
+		if err != nil {
+			log.Println("Error loading peer " + stat.Name() + " from disk!")
+			continue
+		}
+		peer := &Peer{}
+		err = json.Unmarshal(data, peer)
+		if err != nil {
+			log.Println("Error unmarshaling peer " + stat.Name() + " from disk!")
+			continue
+		}
+		peers = append(peers, peer)
+	}
+	return peers, nil
 }
 
 /*
 JSON representation of peer.
 */
-func (p *Peer) store(path string) error {
+func (p *Peer) store(root string) error {
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(path+"/org/peers/"+p.identification, data, FILEPERMISSIONMODE)
+	return ioutil.WriteFile(root+"/"+ORGDIR+"/"+PEERSDIR+"/"+p.identification, data, FILEPERMISSIONMODE)
 }

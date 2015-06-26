@@ -30,6 +30,9 @@ const (
 	TINIGNORE     = ".tinignore"
 	DIRECTORYLIST = "directory.list"
 	LOCAL         = "local"
+	AUTHJSON      = "auth.json"
+	ORGDIR        = "org"
+	PEERSDIR      = "peers"
 	MODELJSON     = "model.json"
 )
 
