@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 /*Model TODO
@@ -29,8 +30,8 @@ type Objectinfo struct {
 	Path           string
 	Shadow         bool
 	Version        map[string]int
-	// Objects        []*Objectinfo `json:",omitempty"`
-	Content string `json:",omitempty"`
+	Objects        []*Objectinfo `json:",omitempty"`
+	Content        string        `json:",omitempty"`
 }
 
 /*
@@ -222,16 +223,34 @@ func (m *Model) getInfo(path *relativePath) (*Objectinfo, error) {
 	return object, nil
 }
 
-func (m *Model) fillInfo(root *Objectinfo, all []*Objectinfo) {
+func (m *Model) fillInfo(root *Objectinfo, all []*Objectinfo) *Objectinfo {
+	if !root.directory {
+		// this may be an error, check later
+		log.Println("Reached file.")
+		return root
+	}
 	rpath := createPath(m.Root + "/" + root.Path)
 	for _, obj := range all {
 		if obj == root {
-			log.Println("Skipping cause same!")
+			// skip self
 			continue
 		}
 		path := rpath.Apply(m.Root + "/" + obj.Path)
-		log.Printf("Path: %s\nDepth: %d\n", path.FullPath(), path.Depth())
+		if path.Depth() != rpath.Depth()+1 {
+			// ignore any out of depth objects
+			continue
+		}
+		if !strings.Contains(path.FullPath(), rpath.FullPath()) {
+			// not in my directory
+			log.Println("Not in mine!")
+			continue
+		}
+		// if reached the object is in our subdir, so add and recursively fill
+		root.Objects = append(root.Objects, m.fillInfo(obj, all))
+		// log.Printf("Depth: %d vs %d\nPath: %s", rpath.Depth(), path.Depth(), path.FullPath())
 	}
+	log.Println("Finished dir.")
+	return root
 }
 
 /*
