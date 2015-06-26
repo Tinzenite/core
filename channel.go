@@ -164,7 +164,7 @@ func (channel *Channel) RequestConnection(address string, self *Peer) error {
 		return err
 	}
 	/*TODO does this block!?*/
-	_, err = channel.tox.FriendAdd(publicKey, msg)
+	_, err = channel.tox.FriendAdd(publicKey, string(msg))
 	return err
 }
 

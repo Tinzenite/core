@@ -7,3 +7,13 @@ type UpdateMessage struct {
 	Operation Operation
 	Object    Objectinfo
 }
+
+/*
+Authentication file.
+*/
+type Authentication struct {
+	User    string
+	Dirname string
+	DirID   string
+	Key     string
+}

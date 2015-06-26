@@ -14,6 +14,7 @@ type Tinzenite struct {
 	Name     string
 	Path     string
 	Username string
+	dirID    string
 	selfpeer *Peer
 	channel  *Channel
 	allPeers []*Peer
@@ -32,11 +33,16 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 	if IsTinzenite(dirpath) {
 		return nil, ErrIsTinzenite
 	}
+	hash, err := newIdentifier()
+	if err != nil {
+		return nil, err
+	}
 	// Build
 	var tinzenite = &Tinzenite{
 		Name:     dirname,
 		Path:     dirpath,
-		Username: username}
+		Username: username,
+		dirID:    hash}
 	// build channel
 	channel, err := CreateChannel(peername, nil, tinzenite)
 	if err != nil {
@@ -70,7 +76,7 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 		return nil, err
 	}
 	tinzenite.model = m
-	/*TODO later implement that model updates are sent to all online peers*/
+	/*TODO later implement that model updates are sent to all online peers --> channel and func must be init here*/
 	return tinzenite, nil
 }
 
@@ -160,7 +166,11 @@ func (t *Tinzenite) write() error {
 	}
 	// write all peers to files
 	for _, peer := range t.allPeers {
-		err = ioutil.WriteFile(root+"/org/peers/"+peer.identification, []byte(peer.Name), FILEPERMISSIONMODE)
+		data, err := peer.JSON()
+		if err != nil {
+			return err
+		}
+		err = ioutil.WriteFile(root+"/org/peers/"+peer.identification, data, FILEPERMISSIONMODE)
 		if err != nil {
 			return err
 		}
@@ -168,6 +178,9 @@ func (t *Tinzenite) write() error {
 	return nil
 }
 
+/*
+Connect this tinzenite to another peer, beginning the bootstrap process.
+*/
 func (t *Tinzenite) Connect(address string) error {
 	return t.channel.RequestConnection(address, t.selfpeer)
 }

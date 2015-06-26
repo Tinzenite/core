@@ -33,10 +33,10 @@ func CreatePeer(name string, address string) (*Peer, error) {
 /*
 JSON representation of peer.
 */
-func (p *Peer) JSON() (string, error) {
+func (p *Peer) JSON() ([]byte, error) {
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return string(data), nil
+	return data, nil
 }
