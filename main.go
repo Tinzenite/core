@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"log"
 	"os"
@@ -11,10 +12,8 @@ import (
 Tinzenite is the struct on which all important operations should be called.
 */
 type Tinzenite struct {
-	Name     string
 	Path     string
-	Username string
-	dirID    string
+	auth     *Authentication
 	selfpeer *Peer
 	channel  *Channel
 	allPeers []*Peer
@@ -37,12 +36,15 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 	if err != nil {
 		return nil, err
 	}
+	/*TODO Bcrypt username!*/
 	// Build
 	var tinzenite = &Tinzenite{
-		Name:     dirname,
-		Path:     dirpath,
-		Username: username,
-		dirID:    hash}
+		Path: dirpath,
+		auth: &Authentication{
+			User:    username,
+			Dirname: dirname,
+			DirID:   hash,
+			Key:     "TODO"}}
 	// build channel
 	channel, err := CreateChannel(peername, nil, tinzenite)
 	if err != nil {
@@ -166,16 +168,17 @@ func (t *Tinzenite) write() error {
 	}
 	// write all peers to files
 	for _, peer := range t.allPeers {
-		data, err := peer.JSON()
-		if err != nil {
-			return err
-		}
-		err = ioutil.WriteFile(root+"/org/peers/"+peer.identification, data, FILEPERMISSIONMODE)
+		err := peer.store(t.Path)
 		if err != nil {
 			return err
 		}
 	}
-	return nil
+	// write auth file
+	data, err := json.MarshalIndent(t.auth, "", "  ")
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(root+"/org/auth.json", data, FILEPERMISSIONMODE)
 }
 
 /*

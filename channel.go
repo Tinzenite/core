@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"log"
 	"strings"
@@ -159,7 +160,7 @@ func (channel *Channel) RequestConnection(address string, self *Peer) error {
 	if err != nil {
 		return err
 	}
-	msg, err := self.JSON()
+	msg, err := json.MarshalIndent(self, "", "  ")
 	if err != nil {
 		return err
 	}

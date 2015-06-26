@@ -1,6 +1,9 @@
 package core
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"io/ioutil"
+)
 
 /*
 Peer is the communication representation of a Tinzenite peer.
@@ -33,10 +36,10 @@ func CreatePeer(name string, address string) (*Peer, error) {
 /*
 JSON representation of peer.
 */
-func (p *Peer) JSON() ([]byte, error) {
+func (p *Peer) store(path string) error {
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return data, nil
+	return ioutil.WriteFile(path+"/org/peers/"+p.identification, data, FILEPERMISSIONMODE)
 }
