@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 /*Model TODO
@@ -133,6 +134,7 @@ Should return the JSON representation of this directory
 func (m *Model) Read() (*Objectinfo, error) {
 	/*TODO this can be massively parallelized: call getInfo for all objects
 	with multiple go routines, then construct the tree afterwards.*/
+	start := time.Now()
 	var allObjs []*Objectinfo
 	rpath := createPath(m.Root)
 	for fullpath := range m.Tracked {
@@ -143,6 +145,8 @@ func (m *Model) Read() (*Objectinfo, error) {
 		}
 		allObjs = append(allObjs, obj)
 	}
+	elapsed := time.Since(start)
+	log.Printf("Took %s\n", elapsed)
 	return allObjs[2], nil
 }
 
