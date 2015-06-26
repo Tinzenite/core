@@ -16,7 +16,7 @@ type relativePath struct {
 	limit int
 }
 
-func createPath(root string) *relativePath {
+func createPathRoot(root string) *relativePath {
 	r := relativePath{}
 	list := strings.Split(root, "/")
 	for _, element := range list {
@@ -26,6 +26,11 @@ func createPath(root string) *relativePath {
 	}
 	r.limit = len(r.stack)
 	return &r
+}
+
+func createPath(root string, subpath string) *relativePath {
+	r := createPathRoot(root)
+	return r.Apply(root + "/" + subpath)
 }
 
 func (r *relativePath) FullPath() string {
@@ -42,7 +47,7 @@ func (r *relativePath) Subpath() string {
 
 func (r *relativePath) Apply(path string) *relativePath {
 	if strings.HasPrefix(path, r.FullPath()) {
-		relPath := createPath(path)
+		relPath := createPathRoot(path)
 		relPath.limit = r.limit
 		return relPath
 	}

@@ -8,12 +8,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
 
-/*Model TODO
-
-TODO Tracked has bad performance once very large - replace with struct? Size
-argument in make seems not to make a difference.
+/*
+Model TODO
 */
 type Model struct {
 	Root       string
@@ -22,7 +21,9 @@ type Model struct {
 	updatechan chan UpdateMessage
 }
 
-/*Objectinfo todo*/
+/*
+Objectinfo TODO
+*/
 type Objectinfo struct {
 	directory      bool
 	Identification string
@@ -97,9 +98,7 @@ func LoadModel(path string) (*Model, error) {
 
 /*
 Update the complete model state. Will if successful try to store the model to
-disk at the end.
-
-TODO: check concurrency allowances?
+disk at the end. Heavy concurrency used here.
 */
 func (m *Model) Update() error {
 	current, err := m.populate()
@@ -107,12 +106,17 @@ func (m *Model) Update() error {
 	if err != nil {
 		return err
 	}
+	wg := new(sync.WaitGroup)
 	for path := range m.Tracked {
 		_, ok := current[path]
 		if ok {
 			// paths that still exist must only be checked for MODIFY
 			delete(current, path)
-			m.apply(Modify, path)
+			wg.Add(1)
+			go func(path string) {
+				m.apply(Modify, path)
+				wg.Done()
+			}(path)
 		} else {
 			// REMOVED - paths that don't exist anymore have been removed
 			removed = append(removed, path)
@@ -125,12 +129,21 @@ func (m *Model) Update() error {
 	// update m.Tracked
 	for _, path := range removed {
 		delete(m.Tracked, path)
-		m.apply(Remove, path)
+		wg.Add(1)
+		go func(path string) {
+			m.apply(Remove, path)
+			wg.Done()
+		}(path)
 	}
 	for _, path := range created {
 		m.Tracked[path] = true
-		m.apply(Create, path)
+		wg.Add(1)
+		go func(path string) {
+			m.apply(Create, path)
+			wg.Done()
+		}(path)
 	}
+	wg.Wait()
 	// finally also store the model for future loads.
 	return m.store()
 }
@@ -150,7 +163,7 @@ of the model: hashes etc are not recalculated.
 */
 func (m *Model) Read() (*Objectinfo, error) {
 	var allObjs sortable
-	rpath := createPath(m.Root)
+	rpath := createPathRoot(m.Root)
 	// getting all Objectinfos is very fast because the staticinfo already exists for all of them
 	for fullpath := range m.Tracked {
 		obj, err := m.getInfo(rpath.Apply(fullpath))
@@ -231,7 +244,7 @@ func (m *Model) fillInfo(root *Objectinfo, all []*Objectinfo) *Objectinfo {
 		// this may be an error, check later
 		return root
 	}
-	rpath := createPath(m.Root + "/" + root.Path)
+	rpath := createPath(m.Root, root.Path)
 	for _, obj := range all {
 		if obj == root {
 			// skip self
@@ -288,8 +301,8 @@ model, not touching m.Tracked. NEVER call this method outside of m.Update()!
 func (m *Model) apply(op Operation, path string) {
 	// whether to send an update on updatechan
 	notify := false
-	// object for notify
-	var infoToNotify staticinfo
+	// ensure clean map operations
+	mutex := sync.Mutex{}
 	switch op {
 	case Create:
 		notify = true
@@ -317,8 +330,9 @@ func (m *Model) apply(op Operation, path string) {
 			Version:        make(map[string]int),
 			Directory:      stat.IsDir(),
 			Content:        hash}
+		mutex.Lock()
 		m.Objinfo[path] = stin
-		infoToNotify = stin
+		mutex.Unlock()
 	case Modify:
 		stin, ok := m.Objinfo[path]
 		if !ok {
@@ -342,25 +356,27 @@ func (m *Model) apply(op Operation, path string) {
 		notify = true
 		// update
 		stin.Content = hash
+		mutex.Lock()
 		m.Objinfo[path] = stin
-		// TODO update version
-		infoToNotify = stin
+		mutex.Unlock()
+		/* TODO update version */
 	case Remove:
 		/*TODO: delete logic for multiple peers required!*/
 		notify = true
-		var ok bool
-		infoToNotify, ok = m.Objinfo[path]
-		if !ok {
-			log.Println("staticinfo lookup failed!")
-			notify = false
-		}
+		mutex.Lock()
 		delete(m.Objinfo, path)
+		mutex.Unlock()
 	default:
 		log.Printf("Unimplemented %s for now!\n", op)
 	}
 	// send the update message
 	if notify && m.updatechan != nil {
-		m.updatechan <- UpdateMessage{Operation: op, Object: infoToNotify}
+		relPath := createPathRoot(m.Root).Apply(path)
+		obj, err := m.getInfo(relPath)
+		if err != nil {
+			log.Printf("Error messaging update for %s!\n", path)
+		}
+		m.updatechan <- UpdateMessage{Operation: op, Object: *obj}
 	}
 }
 
