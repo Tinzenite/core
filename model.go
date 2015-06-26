@@ -173,11 +173,13 @@ contained in m.Tracked. Directories are NOT traversed!
 func (m *Model) getInfo(path *relativePath) (*Objectinfo, error) {
 	_, exists := m.Tracked[path.FullPath()]
 	if !exists {
+		log.Printf("Error: %s\n", path.FullPath())
 		return nil, ErrUntracked
 	}
 	// get staticinfo
 	stin, exists := m.Objinfo[path.FullPath()]
 	if !exists {
+		log.Printf("Error: %s\n", path.FullPath())
 		return nil, ErrUntracked
 	}
 	stat, err := os.Lstat(path.FullPath())
