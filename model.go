@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
+	"time"
 )
 
 /*
@@ -45,6 +45,7 @@ type staticinfo struct {
 	Version        map[string]int
 	Directory      bool
 	Content        string
+	Modtime        time.Time
 }
 
 // sortable allows sorting Objectinfos by path.
@@ -99,24 +100,25 @@ func LoadModel(path string) (*Model, error) {
 /*
 Update the complete model state. Will if successful try to store the model to
 disk at the end. Heavy concurrency used here.
+
+TODO Get concurrency to work here. Last time I had trouble with the Objinfo map.
 */
 func (m *Model) Update() error {
+	if m.Tracked == nil || m.Objinfo == nil {
+		log.Println("NIL error!")
+		return nil
+	}
 	current, err := m.populate()
 	var removed, created []string
 	if err != nil {
 		return err
 	}
-	wg := new(sync.WaitGroup)
 	for path := range m.Tracked {
 		_, ok := current[path]
 		if ok {
 			// paths that still exist must only be checked for MODIFY
 			delete(current, path)
-			wg.Add(1)
-			go func(path string) {
-				m.apply(Modify, path)
-				wg.Done()
-			}(path)
+			m.apply(Modify, path)
 		} else {
 			// REMOVED - paths that don't exist anymore have been removed
 			removed = append(removed, path)
@@ -129,21 +131,12 @@ func (m *Model) Update() error {
 	// update m.Tracked
 	for _, path := range removed {
 		delete(m.Tracked, path)
-		wg.Add(1)
-		go func(path string) {
-			m.apply(Remove, path)
-			wg.Done()
-		}(path)
+		m.apply(Remove, path)
 	}
 	for _, path := range created {
 		m.Tracked[path] = true
-		wg.Add(1)
-		go func(path string) {
-			m.apply(Create, path)
-			wg.Done()
-		}(path)
+		m.apply(Create, path)
 	}
-	wg.Wait()
 	// finally also store the model for future loads.
 	return m.store()
 }
@@ -301,8 +294,6 @@ model, not touching m.Tracked. NEVER call this method outside of m.Update()!
 func (m *Model) apply(op Operation, path string) {
 	// whether to send an update on updatechan
 	notify := false
-	// ensure clean map operations
-	mutex := sync.Mutex{}
 	switch op {
 	case Create:
 		notify = true
@@ -329,10 +320,9 @@ func (m *Model) apply(op Operation, path string) {
 			Identification: id,
 			Version:        make(map[string]int),
 			Directory:      stat.IsDir(),
-			Content:        hash}
-		mutex.Lock()
+			Content:        hash,
+			Modtime:        stat.ModTime()}
 		m.Objinfo[path] = stin
-		mutex.Unlock()
 	case Modify:
 		stin, ok := m.Objinfo[path]
 		if !ok {
@@ -342,6 +332,16 @@ func (m *Model) apply(op Operation, path string) {
 		// no need for further work here
 		if stin.Directory {
 			return
+		}
+		// if modtime still the same no need to hash again
+		stat, err := os.Lstat(path)
+		if err != nil {
+			log.Println(err.Error())
+			// Note that we don't return here because we can still continue without this check
+		} else {
+			if stat.ModTime() == stin.Modtime {
+				return
+			}
 		}
 		hash, err := contentHash(path)
 		if err != nil {
@@ -356,16 +356,12 @@ func (m *Model) apply(op Operation, path string) {
 		notify = true
 		// update
 		stin.Content = hash
-		mutex.Lock()
 		m.Objinfo[path] = stin
-		mutex.Unlock()
 		/* TODO update version */
 	case Remove:
 		/*TODO: delete logic for multiple peers required!*/
 		notify = true
-		mutex.Lock()
 		delete(m.Objinfo, path)
-		mutex.Unlock()
 	default:
 		log.Printf("Unimplemented %s for now!\n", op)
 	}
