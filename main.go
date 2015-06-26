@@ -14,10 +14,10 @@ type Tinzenite struct {
 	Name     string
 	Path     string
 	Username string
-	peer     *Peer
+	selfpeer *Peer
 	channel  *Channel
 	allPeers []*Peer
-	// model    *Objectinfo
+	model    *Model
 }
 
 /*
@@ -52,7 +52,7 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 	if err != nil {
 		return nil, err
 	}
-	tinzenite.peer = peer
+	tinzenite.selfpeer = peer
 	tinzenite.allPeers = []*Peer{peer}
 	// save
 	err = tinzenite.write()
@@ -64,8 +64,13 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 	if err != nil {
 		return nil, err
 	}
-	// make sure model is ready
-	// tinzenite.createModel()
+	// build model (can block for long!)
+	m, err := LoadModel(dirpath)
+	if err != nil {
+		return nil, err
+	}
+	tinzenite.model = m
+	/*TODO later implement that model updates are sent to all online peers*/
 	return tinzenite, nil
 }
 
@@ -92,28 +97,33 @@ func RemoveTinzenite(path string) error {
 	if !IsTinzenite(path) {
 		return ErrNotTinzenite
 	}
-	// TODO remove from directory list
+	/* TODO remove from directory list*/
 	return os.RemoveAll(path + "/" + TINZENITEDIR)
 }
 
 /*
 SyncModel TODO
+
+fetches model from other peers and syncs (this is for manual sync)
 */
 func (tinzenite *Tinzenite) SyncModel() error {
-	/*
-		TODO
-		- fetches model from other peers and syncs (this is for manual sync)
-	*/
 	// first ensure that local model is up to date
-	err := tinzenite.updateModel()
+	err := tinzenite.model.Update()
 	if err != nil {
 		return err
 	}
-	// following concurrently?
 	// iterate over all known peers
-	// if online -> continue
-	// if not init -> init
-	// sync
+	for _, peer := range tinzenite.allPeers {
+		if peer == tinzenite.selfpeer {
+			continue
+		}
+		/*TODO - also make this concurrent?*/
+		tinzenite.channel.Send(peer.Address, "Want update!")
+		// if online -> continue
+		// if not init -> init
+		// sync
+		/*TODO must store init state in allPeers too, also in future encryption*/
+	}
 	return nil
 }
 
@@ -121,29 +131,15 @@ func (tinzenite *Tinzenite) SyncModel() error {
 Address of this Tinzenite peer.
 */
 func (tinzenite *Tinzenite) Address() string {
-	return tinzenite.peer.Address
+	return tinzenite.selfpeer.Address
 }
 
 /*
 Close cleanly stores everything and shuts Tinzenite down.
 */
 func (tinzenite *Tinzenite) Close() {
+	tinzenite.model.Update()
 	tinzenite.channel.Close()
-}
-
-// RENAME + include in SyncModel?
-func (tinzenite *Tinzenite) updateModel() error {
-	// TODO
-	/*
-				- updates from disk
-				- How does this function know which context to use?
-		        - add override for with path --> faster detection because not everything
-		                              has to be rechecked
-				- watch out that it doesn't bite itself with whatever method is used
-						              to fetch models from online
-	*/
-	// use matcher on a per directory basis!
-	return nil
 }
 
 /*
@@ -157,7 +153,7 @@ func (tinzenite *Tinzenite) write() error {
 	root := tinzenite.Path + "/" + TINZENITEDIR
 	// build directory structure
 	err := makeDirectories(root,
-		"org/peers", "temp", "removed")
+		"org/peers", "temp", "removed", "local")
 	if err != nil {
 		return err
 	}
@@ -172,7 +168,7 @@ func (tinzenite *Tinzenite) write() error {
 }
 
 /*
-callbackNewConnection is called when a new connection request comes in.
+CallbackNewConnection is called when a new connection request comes in.
 */
 func (tinzenite *Tinzenite) CallbackNewConnection(address, message string) {
 	log.Printf("New connection from <%s> with message <%s>\n", address, message)
@@ -183,7 +179,7 @@ func (tinzenite *Tinzenite) CallbackNewConnection(address, message string) {
 }
 
 /*
-callbackMessage is called when a message is received.
+CallbackMessage is called when a message is received.
 */
 func (tinzenite *Tinzenite) CallbackMessage(address, message string) {
 	log.Printf("Message from <%s> with message <%s>\n", address, message)
