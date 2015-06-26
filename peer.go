@@ -1,5 +1,7 @@
 package core
 
+import "encoding/json"
+
 /*
 Peer is the communication representation of a Tinzenite peer.
 */
@@ -26,4 +28,15 @@ func CreatePeer(name string, address string) (*Peer, error) {
 		Protocol:       Tox,
 		Encrypted:      false,
 		identification: id}, nil
+}
+
+/*
+JSON representation of peer.
+*/
+func (p *Peer) JSON() (string, error) {
+	data, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }

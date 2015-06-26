@@ -22,6 +22,7 @@ type Channel struct {
 	callbacks Callbacks
 }
 
+// Callbacks for external wrapped access.
 type Callbacks interface {
 	/*CallbackNewConnection is called on a Tox friend request.*/
 	CallbackNewConnection(address, message string)
@@ -146,6 +147,24 @@ func (channel *Channel) AcceptConnection(address string) error {
 	}
 	// ignore friendnumber
 	_, err = channel.tox.FriendAddNorequest(publicKey)
+	return err
+}
+
+/*
+RequestConnection sends a friend request to the given address with the sending
+peer information as the message for bootstrapping.
+*/
+func (channel *Channel) RequestConnection(address string, self *Peer) error {
+	publicKey, err := hex.DecodeString(address)
+	if err != nil {
+		return err
+	}
+	msg, err := self.JSON()
+	if err != nil {
+		return err
+	}
+	/*TODO does this block!?*/
+	_, err = channel.tox.FriendAdd(publicKey, msg)
 	return err
 }
 

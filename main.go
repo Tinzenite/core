@@ -106,19 +106,19 @@ SyncModel TODO
 
 fetches model from other peers and syncs (this is for manual sync)
 */
-func (tinzenite *Tinzenite) SyncModel() error {
+func (t *Tinzenite) SyncModel() error {
 	// first ensure that local model is up to date
-	err := tinzenite.model.Update()
+	err := t.model.Update()
 	if err != nil {
 		return err
 	}
 	// iterate over all known peers
-	for _, peer := range tinzenite.allPeers {
-		if peer == tinzenite.selfpeer {
+	for _, peer := range t.allPeers {
+		if peer == t.selfpeer {
 			continue
 		}
 		/*TODO - also make this concurrent?*/
-		tinzenite.channel.Send(peer.Address, "Want update!")
+		t.channel.Send(peer.Address, "Want update!")
 		// if online -> continue
 		// if not init -> init
 		// sync
@@ -130,28 +130,28 @@ func (tinzenite *Tinzenite) SyncModel() error {
 /*
 Address of this Tinzenite peer.
 */
-func (tinzenite *Tinzenite) Address() string {
-	return tinzenite.selfpeer.Address
+func (t *Tinzenite) Address() string {
+	return t.selfpeer.Address
 }
 
 /*
 Close cleanly stores everything and shuts Tinzenite down.
 */
-func (tinzenite *Tinzenite) Close() {
+func (t *Tinzenite) Close() {
 	/*TODO should I really update again? Maybe just call store explicitely?*/
-	tinzenite.model.Update()
-	tinzenite.channel.Close()
+	t.model.Update()
+	t.channel.Close()
 }
 
 /*
 write the tinzenite directory structure to disk.
 */
-func (tinzenite *Tinzenite) write() error {
+func (t *Tinzenite) write() error {
 	// TODO
 	/*
 		Writes everything in the .tinzenite directory.
 	*/
-	root := tinzenite.Path + "/" + TINZENITEDIR
+	root := t.Path + "/" + TINZENITEDIR
 	// build directory structure
 	err := makeDirectories(root,
 		"org/peers", "temp", "removed", "local")
@@ -159,7 +159,7 @@ func (tinzenite *Tinzenite) write() error {
 		return err
 	}
 	// write all peers to files
-	for _, peer := range tinzenite.allPeers {
+	for _, peer := range t.allPeers {
 		err = ioutil.WriteFile(root+"/org/peers/"+peer.identification, []byte(peer.Name), FILEPERMISSIONMODE)
 		if err != nil {
 			return err
@@ -168,28 +168,36 @@ func (tinzenite *Tinzenite) write() error {
 	return nil
 }
 
+func (t *Tinzenite) Connect(address string) error {
+	return t.channel.RequestConnection(address, t.selfpeer)
+}
+
 /*
 CallbackNewConnection is called when a new connection request comes in.
 */
-func (tinzenite *Tinzenite) CallbackNewConnection(address, message string) {
+func (t *Tinzenite) CallbackNewConnection(address, message string) {
 	log.Printf("New connection from <%s> with message <%s>\n", address, message)
-	err := tinzenite.channel.AcceptConnection(address)
+	err := t.channel.AcceptConnection(address)
 	if err != nil {
 		log.Println(err.Error())
 	}
 	/*TODO actually this should be read from disk once the peer has synced... oO */
-	tinzenite.allPeers = append(tinzenite.allPeers, &Peer{
-		Name:     "Unknown",
-		Address:  address,
-		Protocol: Tox})
+	/*
+		tinzenite.allPeers = append(tinzenite.allPeers, &Peer{
+			Name:     "Unknown",
+			Address:  address,
+			Protocol: Tox})
+	*/
+	// actually we just want to get type and confidence from the user here, and if everything
+	// is okay we accept the connection --> then what? need to bootstrap him...
 }
 
 /*
 CallbackMessage is called when a message is received.
 */
-func (tinzenite *Tinzenite) CallbackMessage(address, message string) {
+func (t *Tinzenite) CallbackMessage(address, message string) {
 	log.Printf("Message from <%s> with message <%s>\n", address, message)
-	tinzenite.channel.Send(address, "ACK")
+	t.channel.Send(address, "ACK")
 	/*TODO switch if request or update*/
 }
 
@@ -197,7 +205,7 @@ func (tinzenite *Tinzenite) CallbackMessage(address, message string) {
 storeGlobalConfig stores the path value into the user's home directory so that clients
 can locate it.
 */
-func (tinzenite *Tinzenite) storeGlobalConfig() error {
+func (t *Tinzenite) storeGlobalConfig() error {
 	// ready outside data
 	user, err := user.Current()
 	if err != nil {
@@ -215,7 +223,7 @@ func (tinzenite *Tinzenite) storeGlobalConfig() error {
 	}
 	defer file.Close()
 	// write path to file
-	_, err = file.WriteString(tinzenite.Path + "\n")
+	_, err = file.WriteString(t.Path + "\n")
 	if err != nil {
 		return err
 	}
