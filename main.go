@@ -107,6 +107,12 @@ func LoadTinzenite(dirpath string) (*Tinzenite, error) {
 		return nil, err
 	}
 	t.model = model
+	// load peer list
+	peers, err := loadPeers(dirpath)
+	if err != nil {
+		return nil, err
+	}
+	t.allPeers = peers
 	// load tox dump
 	selfToxDump, err := loadToxDump(dirpath)
 	if err != nil {
@@ -150,6 +156,7 @@ func (t *Tinzenite) SyncModel() error {
 		if peer == t.selfpeer {
 			continue
 		}
+		log.Println("Sending request.")
 		/*TODO - also make this concurrent?*/
 		t.channel.Send(peer.Address, "Want update! <-- TODO replace this message")
 		// if online -> continue

@@ -22,13 +22,14 @@ type Peer struct {
 loadPeers loads all peers for the given tinzenite root path.
 */
 func loadPeers(root string) ([]*Peer, error) {
-	peersFiles, err := ioutil.ReadDir(root + "/" + ORGDIR + "/" + PEERSDIR)
+	path := root + "/" + TINZENITEDIR + "/" + ORGDIR + "/" + PEERSDIR
+	peersFiles, err := ioutil.ReadDir(path)
 	if err != nil {
 		return nil, err
 	}
 	var peers []*Peer
 	for _, stat := range peersFiles {
-		data, err := ioutil.ReadFile(root + "/" + ORGDIR + "/" + PEERSDIR + "/" + stat.Name())
+		data, err := ioutil.ReadFile(path + "/" + stat.Name())
 		if err != nil {
 			log.Println("Error loading peer " + stat.Name() + " from disk!")
 			continue
