@@ -32,9 +32,10 @@ const (
 	LOCAL         = "local"
 	ORGDIR        = "org"
 	PEERSDIR      = "peers"
-	AUTHJSON      = "auth.json"
-	MODELJSON     = "model.json"
-	SELFPEERJSON  = "self.json"
+	ENDING        = ".json"
+	AUTHJSON      = "auth" + ENDING
+	MODELJSON     = "model" + ENDING
+	SELFPEERJSON  = "self" + ENDING
 )
 
 /*

@@ -52,5 +52,6 @@ func (p *Peer) store(root string) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(root+"/"+TINZENITEDIR+"/"+ORGDIR+"/"+PEERSDIR+"/"+p.Identification, data, FILEPERMISSIONMODE)
+	path := root + "/" + TINZENITEDIR + "/" + ORGDIR + "/" + PEERSDIR + "/" + p.Identification + ENDING
+	return ioutil.WriteFile(path, data, FILEPERMISSIONMODE)
 }

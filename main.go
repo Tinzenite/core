@@ -22,11 +22,7 @@ type Tinzenite struct {
 CreateTinzenite makes a directory a new Tinzenite directory. Will return error
 if already so.
 */
-func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool) (*Tinzenite, error) {
-	// encrypted peer for now unsupported
-	if encrypted {
-		return nil, ErrUnsupported
-	}
+func CreateTinzenite(dirname, dirpath, peername, username string) (*Tinzenite, error) {
 	if IsTinzenite(dirpath) {
 		return nil, ErrIsTinzenite
 	}
@@ -65,13 +61,13 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 		Identification: peerhash}
 	tinzenite.selfpeer = peer
 	tinzenite.allPeers = []*Peer{peer}
-	// save
-	err = tinzenite.store()
+	// save that this directory is now a tinzenite dir
+	err = tinzenite.storeGlobalConfig()
 	if err != nil {
 		return nil, err
 	}
-	// save that this directory is now a tinzenite dir
-	err = tinzenite.storeGlobalConfig()
+	// make .tinzenite so that model can work
+	err = makeDirectory(dirpath + "/" + TINZENITEDIR)
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +77,11 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 		return nil, err
 	}
 	tinzenite.model = m
+	// finally store initial copy
+	err = tinzenite.Store()
+	if err != nil {
+		return nil, err
+	}
 	/*TODO later implement that model updates are sent to all online peers --> channel and func must be init here*/
 	return tinzenite, nil
 }
@@ -150,7 +151,7 @@ func (t *Tinzenite) SyncModel() error {
 			continue
 		}
 		/*TODO - also make this concurrent?*/
-		t.channel.Send(peer.Address, "Want update!")
+		t.channel.Send(peer.Address, "Want update! <-- TODO replace this message")
 		// if online -> continue
 		// if not init -> init
 		// sync
@@ -170,21 +171,17 @@ func (t *Tinzenite) Address() string {
 Close cleanly stores everything and shuts Tinzenite down.
 */
 func (t *Tinzenite) Close() {
-	/*TODO should I really update again? Maybe just call store explicitely?*/
-	t.model.Update()
-	t.store()
-	// FINALLY close
+	// store all information
+	t.Store()
+	// FINALLY close (afterwards because I still need info from channel for store!)
 	t.channel.Close()
 }
 
 /*
-write the tinzenite directory structure to disk.
+Store the tinzenite directory structure to disk. Will resolve all important
+objects and store them so that it can later be reloaded.
 */
-func (t *Tinzenite) store() error {
-	// TODO
-	/*
-		Writes everything in the .tinzenite directory.
-	*/
+func (t *Tinzenite) Store() error {
 	root := t.Path + "/" + TINZENITEDIR
 	// build directory structure
 	err := makeDirectories(root,
@@ -194,6 +191,7 @@ func (t *Tinzenite) store() error {
 	}
 	// write all peers to files
 	for _, peer := range t.allPeers {
+		log.Println("Storing " + peer.Name)
 		err := peer.store(t.Path)
 		if err != nil {
 			return err
@@ -230,14 +228,16 @@ func (t *Tinzenite) CallbackNewConnection(address, message string) {
 	err := t.channel.AcceptConnection(address)
 	if err != nil {
 		log.Println(err.Error())
+		return
 	}
-	/*TODO actually this should be read from disk once the peer has synced... oO */
-	/*
-		tinzenite.allPeers = append(tinzenite.allPeers, &Peer{
-			Name:     "Unknown",
-			Address:  address,
-			Protocol: Tox})
-	*/
+	/*TODO actually this should be read from disk once the peer has synced... oO
+	Correction: read from message other peer info */
+	newID, _ := newIdentifier()
+	t.allPeers = append(t.allPeers, &Peer{
+		Identification: newID,   // must be read from message
+		Name:           message, // must be read from message
+		Address:        address,
+		Protocol:       Tox})
 	// actually we just want to get type and confidence from the user here, and if everything
 	// is okay we accept the connection --> then what? need to bootstrap him...
 }
@@ -246,9 +246,13 @@ func (t *Tinzenite) CallbackNewConnection(address, message string) {
 CallbackMessage is called when a message is received.
 */
 func (t *Tinzenite) CallbackMessage(address, message string) {
-	log.Printf("Message from <%s> with message <%s>\n", address, message)
-	t.channel.Send(address, "ACK")
-	/*TODO switch if request or update*/
+	// log.Printf("Message from <%s> with message <%s>\n", address, message)
+	switch message {
+	case "model":
+		t.channel.Send(address, t.model.String())
+	default:
+		t.channel.Send(address, "ACK")
+	}
 }
 
 /*
