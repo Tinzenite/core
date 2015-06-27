@@ -69,16 +69,16 @@ LoadModel loads or creates a model for the given path, depending whether a
 model.json exists for it already. Also immediately builds the model for the
 first time and stores it.
 */
-func LoadModel(path string) (*Model, error) {
-	if !IsTinzenite(path) {
+func LoadModel(root string) (*Model, error) {
+	if !IsTinzenite(root) {
 		return nil, ErrNotTinzenite
 	}
 	var m *Model
-	data, err := ioutil.ReadFile(path + "/" + TINZENITEDIR + "/" + LOCAL + "/" + MODELJSON)
+	data, err := ioutil.ReadFile(root + "/" + TINZENITEDIR + "/" + LOCAL + "/" + MODELJSON)
 	if err != nil {
 		// if error we must create a new one
 		m = &Model{
-			Root:    path,
+			Root:    root,
 			Tracked: make(map[string]bool),
 			Objinfo: make(map[string]staticinfo)}
 	} else {

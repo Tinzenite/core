@@ -14,7 +14,7 @@ type Peer struct {
 	Address        string
 	Protocol       CommunicationMethod
 	Encrypted      bool
-	identification string
+	Identification string
 	initialized    bool
 }
 
@@ -52,5 +52,5 @@ func (p *Peer) store(root string) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(root+"/"+ORGDIR+"/"+PEERSDIR+"/"+p.identification, data, FILEPERMISSIONMODE)
+	return ioutil.WriteFile(root+"/"+TINZENITEDIR+"/"+ORGDIR+"/"+PEERSDIR+"/"+p.Identification, data, FILEPERMISSIONMODE)
 }

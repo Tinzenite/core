@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io/ioutil"
 	"os"
 	"os/user"
@@ -174,4 +175,40 @@ func makeDirectories(root string, subdirs ...string) error {
 		}
 	}
 	return nil
+}
+
+/*
+toxPeerDump stores the self peer information along with the tox binary data
+required for it to work.
+*/
+type toxPeerDump struct {
+	SelfPeer *Peer
+	ToxData  []byte
+}
+
+/*
+loadToxDump loads the toxPeerDump file for the local Tinzenite directory.
+*/
+func loadToxDump(root string) (*toxPeerDump, error) {
+	data, err := ioutil.ReadFile(root + "/" + TINZENITEDIR + "/" + LOCAL + "/" + SELFPEERJSON)
+	if err != nil {
+		return nil, err
+	}
+	toxPeerDump := &toxPeerDump{}
+	err = json.Unmarshal(data, toxPeerDump)
+	if err != nil {
+		return nil, err
+	}
+	return toxPeerDump, nil
+}
+
+/*
+store the toxPeerDump to the directory.
+*/
+func (t *toxPeerDump) store(root string) error {
+	data, err := json.MarshalIndent(t, "", "  ")
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(root+"/"+TINZENITEDIR+"/"+LOCAL+"/"+SELFPEERJSON, data, FILEPERMISSIONMODE)
 }

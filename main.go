@@ -36,7 +36,7 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 	}
 	/*TODO Bcrypt username!*/
 	// Build
-	var tinzenite = &Tinzenite{
+	tinzenite := &Tinzenite{
 		Path: dirpath,
 		auth: &Authentication{
 			User:    username,
@@ -58,10 +58,11 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 	if err != nil {
 		return nil, err
 	}
-	peer := &Peer{Name: peername,
+	peer := &Peer{
+		Name:           peername,
 		Address:        address,
 		Protocol:       Tox,
-		identification: peerhash}
+		Identification: peerhash}
 	tinzenite.selfpeer = peer
 	tinzenite.allPeers = []*Peer{peer}
 	// save
@@ -88,15 +89,36 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 LoadTinzenite will try to load the given directory path as a Tinzenite directory.
 If not one it won't work: use CreateTinzenite to create a new peer.
 */
-func LoadTinzenite(path string) (*Tinzenite, error) {
-	if !IsTinzenite(path) {
+func LoadTinzenite(dirpath string) (*Tinzenite, error) {
+	if !IsTinzenite(dirpath) {
 		return nil, ErrNotTinzenite
 	}
-	/*
-			TODO
-		   - load dir from given path (validate that path IS tinzenite first)
-	*/
-	return nil, ErrUnsupported
+	t := &Tinzenite{Path: dirpath}
+	// load auth
+	auth, err := loadAuthentication(dirpath)
+	if err != nil {
+		return nil, err
+	}
+	t.auth = auth
+	// load model
+	model, err := LoadModel(dirpath)
+	if err != nil {
+		return nil, err
+	}
+	t.model = model
+	// load tox dump
+	selfToxDump, err := loadToxDump(dirpath)
+	if err != nil {
+		return nil, err
+	}
+	t.selfpeer = selfToxDump.SelfPeer
+	// prepare channel
+	channel, err := CreateChannel(t.selfpeer.Name, selfToxDump.ToxData, t)
+	if err != nil {
+		return nil, err
+	}
+	t.channel = channel
+	return t, nil
 }
 
 /*
@@ -164,7 +186,7 @@ func (t *Tinzenite) write() error {
 	root := t.Path + "/" + TINZENITEDIR
 	// build directory structure
 	err := makeDirectories(root,
-		ORGDIR+"/peers", "temp", "removed", LOCAL)
+		ORGDIR+"/"+PEERSDIR, "temp", "removed", LOCAL)
 	if err != nil {
 		return err
 	}
@@ -175,6 +197,19 @@ func (t *Tinzenite) write() error {
 			return err
 		}
 	}
+	// store local peer info with toxdata
+	toxData, err := t.channel.ToxData()
+	if err != nil {
+		return err
+	}
+	toxPeerDump := &toxPeerDump{
+		SelfPeer: t.selfpeer,
+		ToxData:  toxData}
+	err = toxPeerDump.store(t.Path)
+	if err != nil {
+		return err
+	}
+	// finally store auth file
 	return t.auth.store(t.Path)
 }
 
