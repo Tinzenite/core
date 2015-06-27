@@ -172,8 +172,9 @@ Close cleanly stores everything and shuts Tinzenite down.
 func (t *Tinzenite) Close() {
 	/*TODO should I really update again? Maybe just call store explicitely?*/
 	t.model.Update()
-	t.channel.Close()
 	t.store()
+	// FINALLY close
+	t.channel.Close()
 }
 
 /*
