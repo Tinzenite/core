@@ -198,7 +198,6 @@ func (t *Tinzenite) Store() error {
 	}
 	// write all peers to files
 	for _, peer := range t.allPeers {
-		log.Println("Storing " + peer.Name)
 		err := peer.store(t.Path)
 		if err != nil {
 			return err

@@ -13,7 +13,7 @@ type Peer struct {
 	Name           string
 	Address        string
 	Protocol       CommunicationMethod
-	Encrypted      bool
+	encrypted      bool
 	Identification string
 	initialized    bool
 }
