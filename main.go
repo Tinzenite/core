@@ -66,7 +66,7 @@ func CreateTinzenite(dirname, dirpath, peername, username string, encrypted bool
 	tinzenite.selfpeer = peer
 	tinzenite.allPeers = []*Peer{peer}
 	// save
-	err = tinzenite.write()
+	err = tinzenite.store()
 	if err != nil {
 		return nil, err
 	}
@@ -173,12 +173,13 @@ func (t *Tinzenite) Close() {
 	/*TODO should I really update again? Maybe just call store explicitely?*/
 	t.model.Update()
 	t.channel.Close()
+	t.store()
 }
 
 /*
 write the tinzenite directory structure to disk.
 */
-func (t *Tinzenite) write() error {
+func (t *Tinzenite) store() error {
 	// TODO
 	/*
 		Writes everything in the .tinzenite directory.

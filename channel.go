@@ -74,7 +74,7 @@ func CreateChannel(name string, toxdata []byte, callbacks Callbacks) (*Channel, 
 	if err != nil {
 		return nil, err
 	}
-	log.Println("Bootstrapping to " + toxNode.IPv4)
+	// log.Println("Bootstrapping to " + toxNode.IPv4)
 	err = channel.tox.Bootstrap(toxNode.IPv4, toxNode.Port, toxNode.PublicKey)
 	if err != nil {
 		return nil, err
