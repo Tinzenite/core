@@ -19,6 +19,7 @@ type Model struct {
 	Tracked    map[string]bool
 	Objinfo    map[string]staticinfo
 	updatechan chan UpdateMessage
+	Peerid     string
 }
 
 /*
@@ -65,28 +66,44 @@ func (s sortable) Less(i, j int) bool {
 }
 
 /*
+CreateModel creates a new model at the specified path for the given peer id.
+*/
+func createModel(root, peerid string) (*Model, error) {
+	if !IsTinzenite(root) {
+		return nil, ErrNotTinzenite
+	}
+	m := &Model{
+		Root:    root,
+		Tracked: make(map[string]bool),
+		Objinfo: make(map[string]staticinfo),
+		Peerid:  peerid}
+	// ensure that off line updates are caught (note that updatechan won't notify these)
+	err := m.Update()
+	if err != nil {
+		// explicitely return nil because it is a severe error
+		return nil, err
+	}
+	return m, nil
+}
+
+/*
 LoadModel loads or creates a model for the given path, depending whether a
 model.json exists for it already. Also immediately builds the model for the
 first time and stores it.
 */
-func LoadModel(root string) (*Model, error) {
+func loadModel(root string) (*Model, error) {
 	if !IsTinzenite(root) {
 		return nil, ErrNotTinzenite
 	}
 	var m *Model
 	data, err := ioutil.ReadFile(root + "/" + TINZENITEDIR + "/" + LOCAL + "/" + MODELJSON)
 	if err != nil {
-		// if error we must create a new one
-		m = &Model{
-			Root:    root,
-			Tracked: make(map[string]bool),
-			Objinfo: make(map[string]staticinfo)}
-	} else {
-		// load as json
-		err = json.Unmarshal(data, &m)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
+	}
+	// load as json
+	err = json.Unmarshal(data, &m)
+	if err != nil {
+		return nil, err
 	}
 	// ensure that off line updates are caught (note that updatechan won't notify these)
 	err = m.Update()
@@ -216,7 +233,7 @@ func (m *Model) getInfo(path *relativePath) (*Objectinfo, error) {
 		Name:           path.LastElement(),
 		Path:           path.Subpath(),
 		Shadow:         false,
-		Version:        make(map[string]int)}
+		Version:        stin.Version}
 	if stat.IsDir() {
 		object.directory = true
 		object.Content = ""
@@ -317,7 +334,7 @@ func (m *Model) apply(op Operation, path string) {
 		}
 		stin := staticinfo{
 			Identification: id,
-			Version:        make(map[string]int),
+			Version:        map[string]int{m.Peerid: 0}, // set initial version
 			Directory:      stat.IsDir(),
 			Content:        hash,
 			Modtime:        stat.ModTime()}
@@ -355,6 +372,7 @@ func (m *Model) apply(op Operation, path string) {
 		notify = true
 		// update
 		stin.Content = hash
+		stin.Version[m.Peerid] = stin.Version[m.Peerid] + 1 // update version
 		m.Objinfo[path] = stin
 		/* TODO update version */
 	case Remove:

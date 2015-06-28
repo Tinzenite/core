@@ -72,7 +72,7 @@ func CreateTinzenite(dirname, dirpath, peername, username string) (*Tinzenite, e
 		return nil, err
 	}
 	// build model (can block for long!)
-	m, err := LoadModel(dirpath)
+	m, err := createModel(dirpath, peer.Identification)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func LoadTinzenite(dirpath string) (*Tinzenite, error) {
 	}
 	t.auth = auth
 	// load model
-	model, err := LoadModel(dirpath)
+	model, err := loadModel(dirpath)
 	if err != nil {
 		return nil, err
 	}
