@@ -1,9 +1,12 @@
 package core
 
 import (
+	"encoding/hex"
 	"log"
 	"os"
 	"os/user"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 /*
@@ -26,18 +29,23 @@ func CreateTinzenite(dirname, dirpath, peername, username string) (*Tinzenite, e
 	if IsTinzenite(dirpath) {
 		return nil, ErrIsTinzenite
 	}
-	hash, err := newIdentifier()
+	id, err := newIdentifier()
 	if err != nil {
 		return nil, err
 	}
-	/*TODO Bcrypt username!*/
+	// Bcrypt username
+	userbyte, err := bcrypt.GenerateFromPassword([]byte(username), 10)
+	if err != nil {
+		return nil, err
+	}
+	userhash := hex.EncodeToString(userbyte)
 	// Build
 	tinzenite := &Tinzenite{
 		Path: dirpath,
 		auth: &Authentication{
-			User:    username,
+			User:    userhash,
 			Dirname: dirname,
-			DirID:   hash,
+			DirID:   id,
 			Key:     "TODO"}}
 	// build channel
 	channel, err := CreateChannel(peername, nil, tinzenite)
