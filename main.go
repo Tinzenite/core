@@ -1,7 +1,7 @@
 package core
 
 import (
-	"encoding/hex"
+	"encoding/json"
 	"log"
 	"os"
 	"os/user"
@@ -34,16 +34,15 @@ func CreateTinzenite(dirname, dirpath, peername, username string) (*Tinzenite, e
 		return nil, err
 	}
 	// Bcrypt username
-	userbyte, err := bcrypt.GenerateFromPassword([]byte(username), 10)
+	userhash, err := bcrypt.GenerateFromPassword([]byte(username), 10)
 	if err != nil {
 		return nil, err
 	}
-	userhash := hex.EncodeToString(userbyte)
 	// Build
 	tinzenite := &Tinzenite{
 		Path: dirpath,
 		auth: &Authentication{
-			User:    userhash,
+			User:    string(userhash),
 			Dirname: dirname,
 			DirID:   id,
 			Key:     "TODO"}}
@@ -264,6 +263,9 @@ func (t *Tinzenite) CallbackMessage(address, message string) {
 	switch message {
 	case "model":
 		t.channel.Send(address, t.model.String())
+	case "auth":
+		authbin, _ := json.Marshal(t.auth)
+		t.channel.Send(address, string(authbin))
 	default:
 		t.channel.Send(address, "ACK")
 	}
