@@ -14,12 +14,12 @@ import (
 /*
 Model TODO
 */
-type Model struct {
+type model struct {
 	Root       string
+	SelfID     string
 	Tracked    map[string]bool
 	Objinfo    map[string]staticinfo
 	updatechan chan UpdateMessage
-	Peerid     string
 }
 
 /*
@@ -68,15 +68,15 @@ func (s sortable) Less(i, j int) bool {
 /*
 CreateModel creates a new model at the specified path for the given peer id.
 */
-func createModel(root, peerid string) (*Model, error) {
+func createModel(root, peerid string) (*model, error) {
 	if !IsTinzenite(root) {
 		return nil, ErrNotTinzenite
 	}
-	m := &Model{
+	m := &model{
 		Root:    root,
 		Tracked: make(map[string]bool),
 		Objinfo: make(map[string]staticinfo),
-		Peerid:  peerid}
+		SelfID:  peerid}
 	// ensure that off line updates are caught (note that updatechan won't notify these)
 	err := m.Update()
 	if err != nil {
@@ -91,11 +91,11 @@ LoadModel loads or creates a model for the given path, depending whether a
 model.json exists for it already. Also immediately builds the model for the
 first time and stores it.
 */
-func loadModel(root string) (*Model, error) {
+func loadModel(root string) (*model, error) {
 	if !IsTinzenite(root) {
 		return nil, ErrNotTinzenite
 	}
-	var m *Model
+	var m *model
 	data, err := ioutil.ReadFile(root + "/" + TINZENITEDIR + "/" + LOCAL + "/" + MODELJSON)
 	if err != nil {
 		return nil, err
@@ -120,7 +120,7 @@ disk at the end. Heavy concurrency used here.
 
 TODO Get concurrency to work here. Last time I had trouble with the Objinfo map.
 */
-func (m *Model) Update() error {
+func (m *model) Update() error {
 	if m.Tracked == nil || m.Objinfo == nil {
 		return ErrNilInternalState
 	}
@@ -161,7 +161,7 @@ func (m *Model) Update() error {
 Register the channel over which UpdateMessage can be received. Tinzenite will
 only ever write to this channel, never read.
 */
-func (m *Model) Register(v chan UpdateMessage) {
+func (m *model) Register(v chan UpdateMessage) {
 	m.updatechan = v
 }
 
@@ -170,7 +170,7 @@ Read builds the complete Objectinfo representation of this model to its full
 depth. Incredibly fast because we only link objects based on the current state
 of the model: hashes etc are not recalculated.
 */
-func (m *Model) Read() (*Objectinfo, error) {
+func (m *model) Read() (*Objectinfo, error) {
 	var allObjs sortable
 	rpath := createPathRoot(m.Root)
 	// getting all Objectinfos is very fast because the staticinfo already exists for all of them
@@ -194,7 +194,7 @@ func (m *Model) Read() (*Objectinfo, error) {
 /*
 store the model to disk in the correct directory.
 */
-func (m *Model) store() error {
+func (m *model) store() error {
 	dir := m.Root + "/" + TINZENITEDIR + "/" + LOCAL
 	err := makeDirectory(dir)
 	if err != nil {
@@ -211,7 +211,7 @@ func (m *Model) store() error {
 getInfo creates the Objectinfo for the given path, so long as the path is
 contained in m.Tracked. Directories are NOT traversed!
 */
-func (m *Model) getInfo(path *relativePath) (*Objectinfo, error) {
+func (m *model) getInfo(path *relativePath) (*Objectinfo, error) {
 	_, exists := m.Tracked[path.FullPath()]
 	if !exists {
 		log.Printf("Error: %s\n", path.FullPath())
@@ -248,7 +248,7 @@ func (m *Model) getInfo(path *relativePath) (*Objectinfo, error) {
 fillInfo takes an Objectinfo and a list of candidates and recursively fills its
 Objects slice. If root is a file it simply returns root.
 */
-func (m *Model) fillInfo(root *Objectinfo, all []*Objectinfo) *Objectinfo {
+func (m *model) fillInfo(root *Objectinfo, all []*Objectinfo) *Objectinfo {
 	if !root.directory {
 		// this may be an error, check later
 		return root
@@ -280,7 +280,7 @@ populate a map[path] for the m.root path. Applies the root Matcher if provided.
 
 TODO: need to be capable of applying sub Matchers...
 */
-func (m *Model) populate() (map[string]bool, error) {
+func (m *model) populate() (map[string]bool, error) {
 	match, err := CreateMatcher(m.Root)
 	if err != nil {
 		return nil, err
@@ -307,7 +307,7 @@ func (m *Model) populate() (map[string]bool, error) {
 Apply changes to the internal model state. This method does the true logic on the
 model, not touching m.Tracked. NEVER call this method outside of m.Update()!
 */
-func (m *Model) apply(op Operation, path string) {
+func (m *model) apply(op Operation, path string) {
 	// whether to send an update on updatechan
 	notify := false
 	switch op {
@@ -334,7 +334,7 @@ func (m *Model) apply(op Operation, path string) {
 		}
 		stin := staticinfo{
 			Identification: id,
-			Version:        map[string]int{m.Peerid: 0}, // set initial version
+			Version:        map[string]int{m.SelfID: 0}, // set initial version
 			Directory:      stat.IsDir(),
 			Content:        hash,
 			Modtime:        stat.ModTime()}
@@ -372,15 +372,15 @@ func (m *Model) apply(op Operation, path string) {
 		notify = true
 		// update
 		stin.Content = hash
-		stin.Version[m.Peerid] = stin.Version[m.Peerid] + 1 // update version
+		/*TODO catch overflow on version increase!*/
+		stin.Version[m.SelfID] = stin.Version[m.SelfID] + 1 // update version
 		m.Objinfo[path] = stin
-		/* TODO update version */
 	case Remove:
 		/*TODO: delete logic for multiple peers required!*/
 		notify = true
 		delete(m.Objinfo, path)
 	default:
-		log.Printf("Unimplemented %s for now!\n", op)
+		log.Printf("Unimplemented %s operation!\n", op)
 	}
 	// send the update message
 	if notify && m.updatechan != nil {
@@ -394,7 +394,7 @@ func (m *Model) apply(op Operation, path string) {
 }
 
 /*TODO for now only lists all tracked files for debug*/
-func (m *Model) String() string {
+func (m *model) String() string {
 	var list string
 	for path := range m.Tracked {
 		list += path + "\n"

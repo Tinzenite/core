@@ -15,7 +15,7 @@ type Tinzenite struct {
 	selfpeer *Peer
 	channel  *Channel
 	allPeers []*Peer
-	model    *Model
+	model    *model
 }
 
 /*
