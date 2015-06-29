@@ -12,6 +12,7 @@ var (
 	ErrNoTinIgnore      = errors.New("No .tinignore file found!")
 	ErrUntracked        = errors.New("Object is not tracked in the model!")
 	ErrNilInternalState = errors.New("Internal state has illegal NIL values!")
+	ErrWrongObject      = errors.New("Wrong ObjectInfo!")
 )
 
 // constant value here

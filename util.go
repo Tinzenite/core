@@ -213,24 +213,18 @@ func (t *toxPeerDump) store(root string) error {
 	return ioutil.WriteFile(root+"/"+TINZENITEDIR+"/"+LOCAL+"/"+SELFPEERJSON, data, FILEPERMISSIONMODE)
 }
 
-/*
-Objectinfo represents the in model object fully.
-*/
-type Objectinfo struct {
-	directory      bool // safety check wether the obj is a dir
-	Identification string
-	Name           string
-	Path           string
-	Shadow         bool
-	Version        map[string]int
-	Objects        []*Objectinfo `json:",omitempty"`
-	Content        string        `json:",omitempty"`
+// sortable allows sorting Objectinfos by path.
+type sortable []*objectInfo
+
+func (s sortable) Len() int {
+	return len(s)
 }
 
-/*
-Equal checks wether the given pointer points to the same object based on pointer
-and identification. NOTE: Does not compare any other properties!
-*/
-func (o *Objectinfo) equal(that *Objectinfo) bool {
-	return o == that || o.Identification == that.Identification
+func (s sortable) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s sortable) Less(i, j int) bool {
+	// path are sorted alphabetically all by themselves! :D
+	return s[i].Path < s[j].Path
 }

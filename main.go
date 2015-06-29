@@ -159,6 +159,7 @@ func (t *Tinzenite) SyncModel() error {
 		return err
 	}
 	// iterate over all known peers
+	// TODO the following can be parallelized!
 	for _, peer := range t.allPeers {
 		if peer == t.selfpeer {
 			continue

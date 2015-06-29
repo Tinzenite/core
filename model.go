@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 )
 
 /*
@@ -20,35 +19,6 @@ type model struct {
 	Tracked    map[string]bool
 	Objinfo    map[string]staticinfo
 	updatechan chan UpdateMessage
-}
-
-/*
-staticinfo stores all information that Tinzenite must keep between calls to
-m.Update(). This includes the object ID and version for reapplication, plus
-the content hash if required for file content changes detection.
-*/
-type staticinfo struct {
-	Identification string
-	Version        map[string]int
-	Directory      bool
-	Content        string
-	Modtime        time.Time
-}
-
-// sortable allows sorting Objectinfos by path.
-type sortable []*Objectinfo
-
-func (s sortable) Len() int {
-	return len(s)
-}
-
-func (s sortable) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-func (s sortable) Less(i, j int) bool {
-	// path are sorted alphabetically all by themselves! :D
-	return s[i].Path < s[j].Path
 }
 
 /*
@@ -144,6 +114,25 @@ func (m *model) Update() error {
 }
 
 /*
+ApplyUpdateMessage takes an update message and applies it to the model. Should
+be called after the file operation has been applied but before the next update!
+*/
+func (m *model) ApplyUpdateMessage(msg *UpdateMessage) {
+	// NOTE: NO YOU CANNOT USE m.apply() FOR THIS!
+	path := m.Root + "/" + msg.Object.Path
+	switch msg.Operation {
+	case Create:
+		log.Printf("Create %s\n", path)
+	case Modify:
+		log.Printf("Modify %s\n", path)
+	case Remove:
+		log.Printf("Remove %s\n", path)
+	default:
+		log.Printf("Unknown operation in UpdateMessage: %s\n", msg.Operation)
+	}
+}
+
+/*
 Register the channel over which UpdateMessage can be received. Tinzenite will
 only ever write to this channel, never read.
 */
@@ -156,7 +145,7 @@ Read builds the complete Objectinfo representation of this model to its full
 depth. Incredibly fast because we only link objects based on the current state
 of the model: hashes etc are not recalculated.
 */
-func (m *model) Read() (*Objectinfo, error) {
+func (m *model) Read() (*objectInfo, error) {
 	var allObjs sortable
 	rpath := createPathRoot(m.Root)
 	// getting all Objectinfos is very fast because the staticinfo already exists for all of them
@@ -181,23 +170,19 @@ func (m *model) Read() (*Objectinfo, error) {
 store the model to disk in the correct directory.
 */
 func (m *model) store() error {
-	dir := m.Root + "/" + TINZENITEDIR + "/" + LOCAL
-	err := makeDirectory(dir)
-	if err != nil {
-		return err
-	}
+	path := m.Root + "/" + TINZENITEDIR + "/" + LOCAL + "/" + MODELJSON
 	jsonBinary, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(dir+"/"+MODELJSON, jsonBinary, FILEPERMISSIONMODE)
+	return ioutil.WriteFile(path, jsonBinary, FILEPERMISSIONMODE)
 }
 
 /*
 getInfo creates the Objectinfo for the given path, so long as the path is
 contained in m.Tracked. Directories are NOT traversed!
 */
-func (m *model) getInfo(path *relativePath) (*Objectinfo, error) {
+func (m *model) getInfo(path *relativePath) (*objectInfo, error) {
 	_, exists := m.Tracked[path.FullPath()]
 	if !exists {
 		log.Printf("Error: %s\n", path.FullPath())
@@ -214,7 +199,7 @@ func (m *model) getInfo(path *relativePath) (*Objectinfo, error) {
 		return nil, err
 	}
 	// build object
-	object := &Objectinfo{
+	object := &objectInfo{
 		Identification: stin.Identification,
 		Name:           path.LastElement(),
 		Path:           path.Subpath(),
@@ -234,7 +219,7 @@ func (m *model) getInfo(path *relativePath) (*Objectinfo, error) {
 fillInfo takes an Objectinfo and a list of candidates and recursively fills its
 Objects slice. If root is a file it simply returns root.
 */
-func (m *model) fillInfo(root *Objectinfo, all []*Objectinfo) *Objectinfo {
+func (m *model) fillInfo(root *objectInfo, all []*objectInfo) *objectInfo {
 	if !root.directory {
 		// this may be an error, check later
 		return root
@@ -299,32 +284,12 @@ func (m *model) apply(op Operation, path string) {
 	switch op {
 	case Create:
 		notify = true
-		// fetch all values we'll need to store
-		id, err := newIdentifier()
+		stin, err := createStaticInfo(path, m.SelfID)
 		if err != nil {
 			log.Println(err.Error())
 			return
 		}
-		stat, err := os.Lstat(path)
-		if err != nil {
-			log.Println(err.Error())
-			return
-		}
-		hash := ""
-		if !stat.IsDir() {
-			hash, err = contentHash(path)
-			if err != nil {
-				log.Println(err.Error())
-				return
-			}
-		}
-		stin := staticinfo{
-			Identification: id,
-			Version:        map[string]int{m.SelfID: 0}, // set initial version
-			Directory:      stat.IsDir(),
-			Content:        hash,
-			Modtime:        stat.ModTime()}
-		m.Objinfo[path] = stin
+		m.Objinfo[path] = *stin
 	case Modify:
 		stin, ok := m.Objinfo[path]
 		if !ok {
@@ -365,6 +330,7 @@ func (m *model) apply(op Operation, path string) {
 		/*TODO: delete logic for multiple peers required!*/
 		notify = true
 		delete(m.Objinfo, path)
+		// note: m.tracked is modified in m.Update(), don't touch it here!
 	default:
 		log.Printf("Unimplemented %s operation!\n", op)
 	}
