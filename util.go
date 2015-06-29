@@ -212,3 +212,25 @@ func (t *toxPeerDump) store(root string) error {
 	}
 	return ioutil.WriteFile(root+"/"+TINZENITEDIR+"/"+LOCAL+"/"+SELFPEERJSON, data, FILEPERMISSIONMODE)
 }
+
+/*
+Objectinfo represents the in model object fully.
+*/
+type Objectinfo struct {
+	directory      bool // safety check wether the obj is a dir
+	Identification string
+	Name           string
+	Path           string
+	Shadow         bool
+	Version        map[string]int
+	Objects        []*Objectinfo `json:",omitempty"`
+	Content        string        `json:",omitempty"`
+}
+
+/*
+Equal checks wether the given pointer points to the same object based on pointer
+and identification. NOTE: Does not compare any other properties!
+*/
+func (o *Objectinfo) equal(that *Objectinfo) bool {
+	return o == that || o.Identification == that.Identification
+}

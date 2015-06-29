@@ -23,20 +23,6 @@ type model struct {
 }
 
 /*
-Objectinfo TODO
-*/
-type Objectinfo struct {
-	directory      bool
-	Identification string
-	Name           string
-	Path           string
-	Shadow         bool
-	Version        map[string]int
-	Objects        []*Objectinfo `json:",omitempty"`
-	Content        string        `json:",omitempty"`
-}
-
-/*
 staticinfo stores all information that Tinzenite must keep between calls to
 m.Update(). This includes the object ID and version for reapplication, plus
 the content hash if required for file content changes detection.
