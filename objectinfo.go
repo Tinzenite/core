@@ -1,30 +1,55 @@
 package core
 
+import "log"
+
 /*
-Objectinfo represents the in model object fully.
+ObjectInfo represents the in model object fully.
 */
-type objectInfo struct {
+type ObjectInfo struct {
 	directory      bool // safety check wether the obj is a dir
 	Identification string
 	Name           string
 	Path           string
 	Shadow         bool
 	Version        map[string]int
-	Objects        []*objectInfo `json:",omitempty"`
+	Objects        []*ObjectInfo `json:",omitempty"`
 	Content        string        `json:",omitempty"`
+}
+
+func createObjectInfo(root string, subpath string, selfid string) (*ObjectInfo, error) {
+	path := createPath(root, subpath)
+	stin, _ := createStaticInfo(path.FullPath(), selfid)
+	return &ObjectInfo{
+		directory:      stin.Directory,
+		Identification: stin.Identification,
+		Name:           path.LastElement(),
+		Path:           path.Subpath(),
+		Shadow:         false,
+		Version:        stin.Version,
+		Content:        stin.Content}, nil
 }
 
 /*
 Equal checks wether the given pointer points to the same object based on pointer
 and identification. NOTE: Does not compare any other properties!
 */
-func (o *objectInfo) equal(that *objectInfo) bool {
+func (o *ObjectInfo) Equal(that *ObjectInfo) bool {
 	return o == that || o.Identification == that.Identification
 }
 
-func (o *objectInfo) apply(that *objectInfo) error {
-	if !o.equal(that) {
-		return ErrWrongObject
+/*
+
+*/
+func (o *ObjectInfo) apply(that *ObjectInfo, selfpeerid string) error {
+	// if not same object break right away
+	if !o.Equal(that) {
+		return errWrongObject
 	}
-	return nil
+	// first check for sanity
+	if o.Version[selfpeerid] != that.Version[selfpeerid] {
+		log.Println("Something BIG went wrong!")
+		return errConflict
+	}
+	/*TODO need to put more thought into this...*/
+	return ErrUnsupported
 }

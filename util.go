@@ -214,7 +214,7 @@ func (t *toxPeerDump) store(root string) error {
 }
 
 // sortable allows sorting Objectinfos by path.
-type sortable []*objectInfo
+type sortable []*ObjectInfo
 
 func (s sortable) Len() int {
 	return len(s)

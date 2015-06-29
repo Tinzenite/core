@@ -117,19 +117,45 @@ func (m *model) Update() error {
 ApplyUpdateMessage takes an update message and applies it to the model. Should
 be called after the file operation has been applied but before the next update!
 */
-func (m *model) ApplyUpdateMessage(msg *UpdateMessage) {
+func (m *model) ApplyUpdateMessage(msg *UpdateMessage) error {
 	// NOTE: NO YOU CANNOT USE m.apply() FOR THIS!
-	path := m.Root + "/" + msg.Object.Path
+	path := createPath(m.Root, msg.Object.Path)
 	switch msg.Operation {
 	case Create:
-		log.Printf("Create %s\n", path)
+		log.Printf("Create %s\n", path.FullPath())
+		// sanity check if the object already exists locally
+		_, ok := m.Tracked[path.FullPath()]
+		if ok {
+			log.Println("Object already exists locally! Can not apply create!")
+			return errConflict
+		}
+		// ensure file has been written
+		_, err := os.Lstat(path.FullPath())
+		if err != nil {
+			return err
+		}
+		// build staticinfo
+		stin, err := createStaticInfo(path.FullPath(), m.SelfID)
+		if err != nil {
+			return err
+		}
+		// apply version
+		/*TODO make version an own struct with methods, should simply everything*/
+		stin.Version = msg.Object.Version
+		// add obj to local model
+		m.Tracked[path.FullPath()] = true
+		m.Objinfo[path.FullPath()] = *stin
 	case Modify:
-		log.Printf("Modify %s\n", path)
+		log.Printf("Modify %s\n", path.FullPath())
 	case Remove:
-		log.Printf("Remove %s\n", path)
+		log.Printf("Remove %s\n", path.FullPath())
+		/*TODO multiple peer logic*/
 	default:
 		log.Printf("Unknown operation in UpdateMessage: %s\n", msg.Operation)
+		return ErrUnsupported
 	}
+	// finally store so that we know that the update has been applied
+	return m.store()
 }
 
 /*
@@ -145,7 +171,7 @@ Read builds the complete Objectinfo representation of this model to its full
 depth. Incredibly fast because we only link objects based on the current state
 of the model: hashes etc are not recalculated.
 */
-func (m *model) Read() (*objectInfo, error) {
+func (m *model) Read() (*ObjectInfo, error) {
 	var allObjs sortable
 	rpath := createPathRoot(m.Root)
 	// getting all Objectinfos is very fast because the staticinfo already exists for all of them
@@ -182,7 +208,7 @@ func (m *model) store() error {
 getInfo creates the Objectinfo for the given path, so long as the path is
 contained in m.Tracked. Directories are NOT traversed!
 */
-func (m *model) getInfo(path *relativePath) (*objectInfo, error) {
+func (m *model) getInfo(path *relativePath) (*ObjectInfo, error) {
 	_, exists := m.Tracked[path.FullPath()]
 	if !exists {
 		log.Printf("Error: %s\n", path.FullPath())
@@ -199,7 +225,7 @@ func (m *model) getInfo(path *relativePath) (*objectInfo, error) {
 		return nil, err
 	}
 	// build object
-	object := &objectInfo{
+	object := &ObjectInfo{
 		Identification: stin.Identification,
 		Name:           path.LastElement(),
 		Path:           path.Subpath(),
@@ -219,7 +245,7 @@ func (m *model) getInfo(path *relativePath) (*objectInfo, error) {
 fillInfo takes an Objectinfo and a list of candidates and recursively fills its
 Objects slice. If root is a file it simply returns root.
 */
-func (m *model) fillInfo(root *objectInfo, all []*objectInfo) *objectInfo {
+func (m *model) fillInfo(root *ObjectInfo, all []*ObjectInfo) *ObjectInfo {
 	if !root.directory {
 		// this may be an error, check later
 		return root

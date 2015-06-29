@@ -164,7 +164,8 @@ func (t *Tinzenite) SyncModel() error {
 		if peer == t.selfpeer {
 			continue
 		}
-		log.Println("Sending request.")
+		/* TODO: this reveals that we add a peer twice somewhere... but send only once?! */
+		log.Printf("Sending request to %s.\n", peer.Address)
 		/*TODO - also make this concurrent?*/
 		t.channel.Send(peer.Address, "Want update! <-- TODO replace this message")
 		// if online -> continue
@@ -267,6 +268,13 @@ func (t *Tinzenite) CallbackMessage(address, message string) {
 	case "auth":
 		authbin, _ := json.Marshal(t.auth)
 		t.channel.Send(address, string(authbin))
+	case "create": // TEST ONLY
+		/* TODO continue these tests!*/
+		os.Create(t.Path + "/test.txt")
+		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
+		t.model.ApplyUpdateMessage(&UpdateMessage{
+			Operation: Create,
+			Object:    *obj})
 	default:
 		t.channel.Send(address, "ACK")
 	}
