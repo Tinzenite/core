@@ -6,6 +6,7 @@ type version map[string]int
 Increases the version for the given peer based on the already existing versions.
 */
 func (v version) Increase(peerid string) {
+	/*TODO catch overflow on version increase!*/
 	v[peerid] = v.Max() + 1
 }
 
@@ -20,4 +21,9 @@ func (v version) Max() int {
 		}
 	}
 	return max
+}
+
+func (v version) Merge(that version) version {
+	/*TODO implement!*/
+	return that
 }

@@ -169,6 +169,25 @@ func (channel *Channel) RequestConnection(address string, self *Peer) error {
 	return err
 }
 
+/*
+IsOnline checks whether the given address is currently reachable.
+*/
+func (channel *Channel) IsOnline(address string) (bool, error) {
+	publicKey, err := hex.DecodeString(address)
+	if err != nil {
+		return false, err
+	}
+	num, err := channel.tox.FriendByPublicKey(publicKey)
+	if err != nil {
+		return false, err
+	}
+	status, err := channel.tox.FriendGetConnectionStatus(num)
+	if err != nil {
+		return false, err
+	}
+	return status != gotox.TOX_CONNECTION_NONE, nil
+}
+
 // --- private methods here ---
 
 /*

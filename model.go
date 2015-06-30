@@ -140,7 +140,7 @@ func (m *model) ApplyUpdateMessage(msg *UpdateMessage) error {
 			return err
 		}
 		// apply version
-		/*TODO make version an own struct with methods, should simply everything*/
+		/*TODO this is fishy, not correct yet - currently we loose the external version!*/
 		stin.Version = msg.Object.Version
 		// add obj to local model
 		m.Tracked[path.FullPath()] = true
@@ -349,8 +349,7 @@ func (m *model) apply(op Operation, path string) {
 		notify = true
 		// update
 		stin.Content = hash
-		/*TODO catch overflow on version increase!*/
-		stin.Version[m.SelfID] = stin.Version[m.SelfID] + 1 // update version
+		stin.Version.Increase(m.SelfID)
 		m.Objinfo[path] = stin
 	case Remove:
 		/*TODO: delete logic for multiple peers required!*/

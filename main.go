@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/user"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -161,10 +162,13 @@ func (t *Tinzenite) SyncModel() error {
 	// iterate over all known peers
 	// TODO the following can be parallelized!
 	for _, peer := range t.allPeers {
-		if peer == t.selfpeer {
+		if strings.EqualFold(peer.Address, t.selfpeer.Address) {
 			continue
 		}
-		/* TODO: this reveals that we add a peer twice somewhere... but send only once?! */
+		online, _ := t.channel.IsOnline(peer.Address)
+		if !online {
+			continue
+		}
 		log.Printf("Sending request to %s.\n", peer.Address)
 		/*TODO - also make this concurrent?*/
 		t.channel.Send(peer.Address, "Want update! <-- TODO replace this message")
