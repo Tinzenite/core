@@ -12,10 +12,10 @@ the content hash if required for file content changes detection.
 */
 type staticinfo struct {
 	Identification string
-	Version        map[string]int
 	Directory      bool
 	Content        string
 	Modtime        time.Time
+	Version        version
 }
 
 /*

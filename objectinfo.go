@@ -11,11 +11,15 @@ type ObjectInfo struct {
 	Name           string
 	Path           string
 	Shadow         bool
-	Version        map[string]int
-	Objects        []*ObjectInfo `json:",omitempty"`
+	Version        version
 	Content        string        `json:",omitempty"`
+	Objects        []*ObjectInfo `json:",omitempty"`
 }
 
+/*
+createObjectInfo is a TEST function for creating an object for the specified
+parameters.
+*/
 func createObjectInfo(root string, subpath string, selfid string) (*ObjectInfo, error) {
 	path := createPath(root, subpath)
 	stin, _ := createStaticInfo(path.FullPath(), selfid)
