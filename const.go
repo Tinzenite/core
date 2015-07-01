@@ -21,6 +21,7 @@ var (
 	errWrongObject      = errors.New("Wrong ObjectInfo!")
 	errConflict         = errors.New("Conflict, can not apply!")
 	errIllegalFileState = errors.New("Illegal file state detected!")
+	errModelInconsitent = errors.New("Model tracked and staticinfo are inconsistent!")
 )
 
 // constant value here

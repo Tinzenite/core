@@ -117,39 +117,76 @@ func (m *model) Update() error {
 ApplyUpdateMessage takes an update message and applies it to the model. Should
 be called after the file operation has been applied but before the next update!
 */
+/*TODO catch shadow files*/
 func (m *model) ApplyUpdateMessage(msg *UpdateMessage) error {
 	// NOTE: NO YOU CANNOT USE m.apply() FOR THIS!
 	path := createPath(m.Root, msg.Object.Path)
 	switch msg.Operation {
 	case Create:
 		log.Printf("Create %s\n", path.FullPath())
+		// ensure file has been written
+		if !fileExists(path.FullPath()) {
+			return errIllegalFileState
+		}
 		// sanity check if the object already exists locally
 		_, ok := m.Tracked[path.FullPath()]
 		if ok {
 			log.Println("Object already exists locally! Can not apply create!")
 			return errConflict
 		}
-		// ensure file has been written
-		_, err := os.Lstat(path.FullPath())
-		if err != nil {
-			return err
-		}
+		// NOTE: we don't explicitely check m.Objinfo because we'll just overwrite it if already exists
 		// build staticinfo
 		stin, err := createStaticInfo(path.FullPath(), m.SelfID)
 		if err != nil {
 			return err
 		}
 		// apply version
-		/*TODO this is fishy, not correct yet - currently we loose the external version!*/
 		stin.Version = msg.Object.Version
 		// add obj to local model
 		m.Tracked[path.FullPath()] = true
 		m.Objinfo[path.FullPath()] = *stin
 	case Modify:
 		log.Printf("Modify %s\n", path.FullPath())
+		// ensure file has been written
+		if !fileExists(path.FullPath()) {
+			return errIllegalFileState
+		}
+		// sanity check
+		_, ok := m.Tracked[path.FullPath()]
+		if !ok {
+			log.Println("Object doesn't exist locally!")
+			return errIllegalFileState
+		}
+		// fetch stin
+		stin, ok := m.Objinfo[path.FullPath()]
+		if !ok {
+			return errModelInconsitent
+		}
+		// detect conflict
+		ver, ok := stin.Version.Valid(msg.Object.Version, m.SelfID)
+		if !ok {
+			log.Println("Merge error!")
+			/*TODO implement merge behavior in main.go*/
+			return errConflict
+		}
+		// apply version update
+		stin.Version = ver
+		// update hash and modtime
+		err := stin.UpdateFromDisk(path.FullPath())
+		if err != nil {
+			return err
+		}
+		// apply
+		m.Objinfo[path.FullPath()] = stin
 	case Remove:
 		log.Printf("Remove %s\n", path.FullPath())
+		// ensure file has been removed
+		if fileExists(path.FullPath()) {
+			return errIllegalFileState
+		}
 		/*TODO multiple peer logic*/
+		delete(m.Tracked, path.FullPath())
+		delete(m.Objinfo, path.FullPath())
 	default:
 		log.Printf("Unknown operation in UpdateMessage: %s\n", msg.Operation)
 		return ErrUnsupported

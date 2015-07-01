@@ -178,6 +178,15 @@ func makeDirectories(root string, subdirs ...string) error {
 }
 
 /*
+fileExists checks whether a file at that location exists.
+*/
+func fileExists(path string) bool {
+	/*TODO differentiate between dir and file?*/
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
+/*
 toxPeerDump stores the self peer information along with the tox binary data
 required for it to work.
 */

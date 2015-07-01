@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/user"
@@ -274,10 +275,23 @@ func (t *Tinzenite) CallbackMessage(address, message string) {
 		t.channel.Send(address, string(authbin))
 	case "create": // TEST ONLY
 		/* TODO continue these tests!*/
+		// CREATE
 		os.Create(t.Path + "/test.txt")
 		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
 		t.model.ApplyUpdateMessage(&UpdateMessage{
 			Operation: Create,
+			Object:    *obj})
+	case "modify":
+		// MODIFY
+		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
+		orig, _ := t.model.Objinfo[t.Path+"/test.txt"]
+		for index := 0; index < orig.Version.Max(); index++ {
+			obj.Version.Increase(t.model.SelfID) // "apply" local changes
+		}
+		obj.Version.Increase("otheridhere") // the remote change
+		ioutil.WriteFile(t.Path+"/test.txt", []byte("hello world"), FILEPERMISSIONMODE)
+		t.model.ApplyUpdateMessage(&UpdateMessage{
+			Operation: Modify,
 			Object:    *obj})
 	default:
 		t.channel.Send(address, "ACK")

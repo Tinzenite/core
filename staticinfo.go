@@ -46,3 +46,22 @@ func createStaticInfo(path, selfpeerid string) (*staticinfo, error) {
 		Content:        hash,
 		Modtime:        stat.ModTime()}, nil
 }
+
+/*
+UpdateFromDisk updates the hash and modtime to match the file on disk.
+*/
+func (s *staticinfo) UpdateFromDisk(path string) error {
+	if !s.Directory {
+		hash, err := contentHash(path)
+		if err != nil {
+			return err
+		}
+		s.Content = hash
+	}
+	stat, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	s.Modtime = stat.ModTime()
+	return nil
+}
