@@ -34,7 +34,9 @@ func (v version) Valid(that version, selfid string) (version, bool) {
 		log.Println("Merge conflict! Modify is based on out of date file.")
 		return v, false
 	}
-	if v[selfid] != that[selfid] {
+	// if local changes don't even exist no need to check the following
+	_, ok := v[selfid]
+	if ok && v[selfid] != that[selfid] {
 		// this means local version was changed without the other peer realizing
 		log.Println("Merge conflict! Local file has since changed.")
 		return v, false

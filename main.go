@@ -285,13 +285,39 @@ func (t *Tinzenite) CallbackMessage(address, message string) {
 		// MODIFY
 		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
 		orig, _ := t.model.Objinfo[t.Path+"/test.txt"]
-		for index := 0; index < orig.Version.Max(); index++ {
-			obj.Version.Increase(t.model.SelfID) // "apply" local changes
+		obj.Version[t.model.SelfID] = orig.Version[t.model.SelfID]
+		// if orig already has, increase further
+		value, ok := orig.Version["otheridhere"]
+		if ok {
+			obj.Version["otheridhere"] = value
 		}
-		obj.Version.Increase("otheridhere") // the remote change
+		// add one new version
+		obj.Version.Increase("otheridhere")
+		// write change
 		ioutil.WriteFile(t.Path+"/test.txt", []byte("hello world"), FILEPERMISSIONMODE)
 		t.model.ApplyUpdateMessage(&UpdateMessage{
 			Operation: Modify,
+			Object:    *obj})
+	case "conflict":
+		// MODIFY that creates merge conflict
+		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
+		obj.Version[t.model.SelfID] = -1
+		obj.Version.Increase("otheridhere") // the remote change
+		log.Println("Sending: " + obj.Version.String())
+		ioutil.WriteFile(t.Path+"/test.txt", []byte("hello world"), FILEPERMISSIONMODE)
+		t.model.ApplyUpdateMessage(&UpdateMessage{
+			Operation: Modify,
+			Object:    *obj})
+	case "delete":
+		// DELETE
+		obj, err := createObjectInfo(t.Path, "test.txt", "otheridhere")
+		if err != nil {
+			log.Println(err.Error())
+			return
+		}
+		os.Remove(t.Path + "/test.txt")
+		t.model.ApplyUpdateMessage(&UpdateMessage{
+			Operation: Remove,
 			Object:    *obj})
 	default:
 		t.channel.Send(address, "ACK")

@@ -22,7 +22,10 @@ parameters.
 */
 func createObjectInfo(root string, subpath string, selfid string) (*ObjectInfo, error) {
 	path := createPath(root, subpath)
-	stin, _ := createStaticInfo(path.FullPath(), selfid)
+	stin, err := createStaticInfo(path.FullPath(), selfid)
+	if err != nil {
+		return nil, err
+	}
 	return &ObjectInfo{
 		directory:      stin.Directory,
 		Identification: stin.Identification,
