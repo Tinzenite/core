@@ -70,25 +70,28 @@ func CreateTinzenite(dirname, dirpath, peername, username string) (*Tinzenite, e
 		Identification: peerhash}
 	tinzenite.selfpeer = peer
 	tinzenite.allPeers = []*Peer{peer}
-	// save that this directory is now a tinzenite dir
-	err = tinzenite.storeGlobalConfig()
-	if err != nil {
-		return nil, err
-	}
 	// make .tinzenite so that model can work
-	err = makeDirectory(dirpath + "/" + TINZENITEDIR)
+	err = tinzenite.makeDotTinzenite()
 	if err != nil {
 		return nil, err
 	}
 	// build model (can block for long!)
 	m, err := createModel(dirpath, peer.Identification)
 	if err != nil {
+		RemoveTinzenite(dirpath)
 		return nil, err
 	}
 	tinzenite.model = m
 	// finally store initial copy
 	err = tinzenite.Store()
 	if err != nil {
+		RemoveTinzenite(dirpath)
+		return nil, err
+	}
+	// save that this directory is now a tinzenite dir
+	err = tinzenite.storeGlobalConfig()
+	if err != nil {
+		RemoveTinzenite(dirpath)
 		return nil, err
 	}
 	/*TODO later implement that model updates are sent to all online peers --> channel and func must be init here*/
@@ -203,10 +206,7 @@ Store the tinzenite directory structure to disk. Will resolve all important
 objects and store them so that it can later be reloaded.
 */
 func (t *Tinzenite) Store() error {
-	root := t.Path + "/" + TINZENITEDIR
-	// build directory structure
-	err := makeDirectories(root,
-		ORGDIR+"/"+PEERSDIR, "temp", "removed", LOCAL)
+	err := t.makeDotTinzenite()
 	if err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func (t *Tinzenite) Connect(address string) error {
 /*
 CallbackNewConnection is called when a new connection request comes in.
 */
-func (t *Tinzenite) CallbackNewConnection(address, message string) {
+func (t *Tinzenite) callbackNewConnection(address, message string) {
 	log.Printf("New connection from <%s> with message <%s>\n", address, message)
 	err := t.channel.AcceptConnection(address)
 	if err != nil {
@@ -265,8 +265,7 @@ func (t *Tinzenite) CallbackNewConnection(address, message string) {
 /*
 CallbackMessage is called when a message is received.
 */
-func (t *Tinzenite) CallbackMessage(address, message string) {
-	// log.Printf("Message from <%s> with message <%s>\n", address, message)
+func (t *Tinzenite) callbackMessage(address, message string) {
 	switch message {
 	case "model":
 		t.channel.Send(address, t.model.String())
@@ -352,4 +351,15 @@ func (t *Tinzenite) storeGlobalConfig() error {
 	}
 	// ensure that the file is valid
 	return PrettifyDirectoryList()
+}
+
+/*
+makeDotTinzenite creates the directory structure for the .tinzenite directory.
+
+TODO: optimize this function to check if it even needs to create these dir first?
+*/
+func (t *Tinzenite) makeDotTinzenite() error {
+	root := t.Path + "/" + TINZENITEDIR
+	// build directory structure
+	return makeDirectories(root, ORGDIR+"/"+PEERSDIR, "temp", "removed", LOCAL)
 }

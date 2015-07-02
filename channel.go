@@ -26,9 +26,9 @@ type Channel struct {
 // Callbacks for external wrapped access.
 type Callbacks interface {
 	/*CallbackNewConnection is called on a Tox friend request.*/
-	CallbackNewConnection(address, message string)
+	callbackNewConnection(address, message string)
 	/*CallbackMessage is called on an incomming message.*/
-	CallbackMessage(address, message string)
+	callbackMessage(address, message string)
 }
 
 var wg sync.WaitGroup
@@ -42,26 +42,30 @@ func CreateChannel(name string, toxdata []byte, callbacks Callbacks) (*Channel, 
 	if name == "" {
 		return nil, errors.New("CreateChannel called with no name!")
 	}
+	var init bool
 	var channel = &Channel{}
 	var options *gotox.Options
 	var err error
 
+	// this decides whether we are initiating a new connection or using an existing one
 	if toxdata == nil {
 		options = &gotox.Options{
 			true, true,
 			gotox.TOX_PROXY_TYPE_NONE, "127.0.0.1", 5555, 0, 0, 0,
 			gotox.TOX_SAVEDATA_TYPE_NONE, nil}
+		init = true
 	} else {
 		options = &gotox.Options{
 			true, true,
 			gotox.TOX_PROXY_TYPE_NONE, "127.0.0.1", 5555, 0, 0, 0,
 			gotox.TOX_SAVEDATA_TYPE_TOX_SAVE, toxdata}
+		init = false
 	}
 	channel.tox, err = gotox.New(options)
 	if err != nil {
 		return nil, err
 	}
-	if toxdata == nil {
+	if init {
 		channel.tox.SelfSetName(name)
 		channel.tox.SelfSetStatusMessage("Tin Peer")
 	}
@@ -69,15 +73,16 @@ func CreateChannel(name string, toxdata []byte, callbacks Callbacks) (*Channel, 
 	// Register our callbacks
 	channel.tox.CallbackFriendRequest(channel.onFriendRequest)
 	channel.tox.CallbackFriendMessage(channel.onFriendMessage)
-	// Bootstrap
-	toxNode, err := toxdynboot.FetchFirstAlive(100 * time.Millisecond)
-	if err != nil {
-		return nil, err
-	}
-	// log.Println("Bootstrapping to " + toxNode.IPv4)
-	err = channel.tox.Bootstrap(toxNode.IPv4, toxNode.Port, toxNode.PublicKey)
-	if err != nil {
-		return nil, err
+	if init {
+		// Bootstrap
+		toxNode, err := toxdynboot.FetchFirstAlive(200 * time.Millisecond)
+		if err != nil {
+			return nil, err
+		}
+		err = channel.tox.Bootstrap(toxNode.IPv4, toxNode.Port, toxNode.PublicKey)
+		if err != nil {
+			return nil, err
+		}
 	}
 	// register callbacks
 	channel.callbacks = callbacks
@@ -164,7 +169,7 @@ func (channel *Channel) RequestConnection(address string, self *Peer) error {
 	if err != nil {
 		return err
 	}
-	/*TODO does this block!?*/
+	// send non blocking friend request
 	_, err = channel.tox.FriendAdd(publicKey, string(msg))
 	return err
 }
@@ -216,7 +221,6 @@ until Close() is called.
 func (channel *Channel) run() {
 	for {
 		temp, _ := channel.tox.IterationInterval()
-		/*TODO maybe this needs to be smaller?*/
 		intervall := time.Duration(temp) * time.Millisecond
 		select {
 		case <-stop:
@@ -238,7 +242,7 @@ onFriendRequest calls the appropriate callback, wrapping it sanely for our purpo
 */
 func (channel *Channel) onFriendRequest(t *gotox.Tox, publicKey []byte, message string) {
 	if channel.callbacks != nil {
-		channel.callbacks.CallbackNewConnection(hex.EncodeToString(publicKey), message)
+		channel.callbacks.callbackNewConnection(hex.EncodeToString(publicKey), message)
 	} else {
 		log.Println("Error: callbacks are nil!")
 	}
@@ -253,9 +257,9 @@ func (channel *Channel) onFriendMessage(t *gotox.Tox, friendnumber uint32, messa
 		if channel.callbacks != nil {
 			publicKey, err := channel.tox.FriendGetPublickey(friendnumber)
 			if err != nil {
-				channel.callbacks.CallbackMessage("ADDRESS_ERROR", message)
+				channel.callbacks.callbackMessage("ADDRESS_ERROR", message)
 			} else {
-				channel.callbacks.CallbackMessage(hex.EncodeToString(publicKey), message)
+				channel.callbacks.callbackMessage(hex.EncodeToString(publicKey), message)
 			}
 		} else {
 			log.Println("Error: callbacks are nil!")
