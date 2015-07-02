@@ -26,12 +26,16 @@ var (
 
 // constant value here
 const (
-	// RANDOMSEEDLENGTH is the amount of bytes used as cryptographic hash seed.
+	/*RANDOMSEEDLENGTH is the amount of bytes used as cryptographic hash seed.*/
 	RANDOMSEEDLENGTH = 32
-	// IDMAXLENGTH is the length in chars of new random identification hashes.
-	IDMAXLENGTH        = 16
+	/*IDMAXLENGTH is the length in chars of new random identification hashes.*/
+	IDMAXLENGTH = 16
+	/*KEYLENGTH is the length of the encryption key used for challenges and file encryption.*/
+	KEYLENGTH = 256
+	/*FILEPERMISSIONMODE used for all file operations.*/
 	FILEPERMISSIONMODE = 0777
-	CHUNKSIZE          = 8 * 1024
+	/*CHUNKSIZE for hashing and encryption.*/
+	CHUNKSIZE = 8 * 1024
 )
 
 // Path constants here
