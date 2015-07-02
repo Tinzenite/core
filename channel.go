@@ -188,6 +188,25 @@ func (channel *Channel) IsOnline(address string) (bool, error) {
 	return status != gotox.TOX_CONNECTION_NONE, nil
 }
 
+/*
+NameOf the key associated to the given address.
+*/
+func (channel *Channel) NameOf(address string) (string, error) {
+	publicKey, err := hex.DecodeString(address)
+	if err != nil {
+		return "", err
+	}
+	num, err := channel.tox.FriendByPublicKey(publicKey)
+	if err != nil {
+		return "", err
+	}
+	name, err := channel.tox.FriendGetName(num)
+	if err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
 // --- private methods here ---
 
 /*
