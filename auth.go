@@ -1,6 +1,7 @@
 package core
 
 import (
+	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/json"
@@ -78,11 +79,15 @@ func (a *Authentication) Store(root string) error {
 	return ioutil.WriteFile(root+"/"+TINZENITEDIR+"/"+ORGDIR+"/"+AUTHJSON, data, FILEPERMISSIONMODE)
 }
 
-func (a *Authentication) initCipher(password string) {
+func (a *Authentication) initCipher(password string) error {
 	/*TODO use password to get key, don't need cipher if that fails*/
-	/*TODO: Go has support for other modes which do support integrity and authentication checks. As rossum said you can use GCM or CCM. You can find lots of examples on godoc.org. For example HashiCorp's memberlist library.
+	/*TODO: Go has support for other modes which do support integrity and authentication checks. As rossum said you can use GCM or CCM. You can find lots of examples on godoc.org. For example HashiCorp's memberlist library. */
 	// need to initialize the block cipher:
-	auth.block, err :=
-	*/
-	/*TODO implement what happens when password fails! --> strong error!*/
+	block, err := aes.NewCipher([]byte(password))
+	if err != nil {
+		/*TODO implement what happens when password / cipher fails! --> strong error!*/
+		return err
+	}
+	a.block = block
+	return nil
 }
