@@ -25,12 +25,12 @@ type Tinzenite struct {
 CreateTinzenite makes a directory a new Tinzenite directory. Will return error
 if already so.
 */
-func CreateTinzenite(dirname, dirpath, peername, username string) (*Tinzenite, error) {
+func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Tinzenite, error) {
 	if IsTinzenite(dirpath) {
 		return nil, ErrIsTinzenite
 	}
 	// get auth data
-	auth, err := createAuthentication(dirpath, username, dirname)
+	auth, err := createAuthentication(dirpath, dirname, username, password)
 	if err != nil {
 		return nil, err
 	}
@@ -92,13 +92,13 @@ func CreateTinzenite(dirname, dirpath, peername, username string) (*Tinzenite, e
 LoadTinzenite will try to load the given directory path as a Tinzenite directory.
 If not one it won't work: use CreateTinzenite to create a new peer.
 */
-func LoadTinzenite(dirpath string) (*Tinzenite, error) {
+func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
 	if !IsTinzenite(dirpath) {
 		return nil, ErrNotTinzenite
 	}
 	t := &Tinzenite{Path: dirpath}
 	// load auth
-	auth, err := loadAuthentication(dirpath)
+	auth, err := loadAuthentication(dirpath, password)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +220,7 @@ func (t *Tinzenite) Store() error {
 		return err
 	}
 	// finally store auth file
-	return t.auth.store(t.Path)
+	return t.auth.Store(t.Path)
 }
 
 /*
