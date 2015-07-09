@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"io/ioutil"
-	"log"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -101,31 +100,4 @@ func (a *Authentication) initCipher(password []byte) error {
 	}
 	a.block = block
 	return nil
-}
-
-func TestCryptoStuff() {
-	/*TODO: look into either using NaCL from x/crypto OR writing own wrapper! I require authentication too...*/
-	// catch errors so that I can read them :P
-	defer func() {
-		if r := recover(); r != nil {
-			log.Println(r)
-		}
-	}()
-	encrypted := make([]byte, 16*3)
-	outA := make([]byte, 16*3)
-	outB := make([]byte, 16*3)
-	cblock, err := aes.NewCipher([]byte("1234567812345678"))
-	if err != nil {
-		log.Println("a: " + err.Error())
-		return
-	}
-	wblock, err := aes.NewCipher([]byte("1234367812343678"))
-	if err != nil {
-		log.Println(err.Error())
-		return
-	}
-	cblock.Encrypt(encrypted, []byte("Top secret, do not reveal to outsider under penalty of death!   ")[:16])
-	cblock.Decrypt(outA, encrypted)
-	wblock.Decrypt(outB, encrypted)
-	log.Printf("Correct: %s\nWrong: %s\n", outA, outB)
 }
