@@ -104,6 +104,7 @@ func (a *Authentication) initCipher(password []byte) error {
 }
 
 func TestCryptoStuff() {
+	/*TODO: look into either using NaCL from x/crypto OR writing own wrapper! I require authentication too...*/
 	// catch errors so that I can read them :P
 	defer func() {
 		if r := recover(); r != nil {
