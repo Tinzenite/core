@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"io/ioutil"
+	"log"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -35,7 +36,12 @@ func loadAuthentication(path string, password string) (*Authentication, error) {
 		return nil, err
 	}
 	/*TODO check if password ok and use to decrypt key for init*/
-	auth.initCipher(password)
+	// Bcrypt password
+	passhash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+	if err != nil {
+		return nil, err
+	}
+	auth.initCipher(passhash)
 	return auth, nil
 }
 
@@ -50,6 +56,11 @@ func createAuthentication(path, dirname, username, password string) (*Authentica
 	if err != nil {
 		return nil, err
 	}
+	// Bcrypt password
+	passhash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+	if err != nil {
+		return nil, err
+	}
 	// Make a new secure key:
 	data := make([]byte, KEYLENGTH)
 	_, err = rand.Read(data)
@@ -61,9 +72,9 @@ func createAuthentication(path, dirname, username, password string) (*Authentica
 		User:    string(userhash),
 		Dirname: dirname,
 		DirID:   id,
-		Key:     password}
+		Key:     string(passhash)}
 	// init cipher once key is available
-	auth.initCipher(password)
+	auth.initCipher(passhash)
 	return auth, nil
 }
 
@@ -79,15 +90,41 @@ func (a *Authentication) Store(root string) error {
 	return ioutil.WriteFile(root+"/"+TINZENITEDIR+"/"+ORGDIR+"/"+AUTHJSON, data, FILEPERMISSIONMODE)
 }
 
-func (a *Authentication) initCipher(password string) error {
+func (a *Authentication) initCipher(password []byte) error {
 	/*TODO use password to get key, don't need cipher if that fails*/
 	/*TODO: Go has support for other modes which do support integrity and authentication checks. As rossum said you can use GCM or CCM. You can find lots of examples on godoc.org. For example HashiCorp's memberlist library. */
 	// need to initialize the block cipher:
-	block, err := aes.NewCipher([]byte(password))
+	block, err := aes.NewCipher(password)
 	if err != nil {
 		/*TODO implement what happens when password / cipher fails! --> strong error!*/
 		return err
 	}
 	a.block = block
 	return nil
+}
+
+func TestCryptoStuff() {
+	// catch errors so that I can read them :P
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println(r)
+		}
+	}()
+	encrypted := make([]byte, 16*3)
+	outA := make([]byte, 16*3)
+	outB := make([]byte, 16*3)
+	cblock, err := aes.NewCipher([]byte("1234567812345678"))
+	if err != nil {
+		log.Println("a: " + err.Error())
+		return
+	}
+	wblock, err := aes.NewCipher([]byte("1234367812343678"))
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+	cblock.Encrypt(encrypted, []byte("Top secret, do not reveal to outsider under penalty of death!   ")[:16])
+	cblock.Decrypt(outA, encrypted)
+	wblock.Decrypt(outB, encrypted)
+	log.Printf("Correct: %s\nWrong: %s\n", outA, outB)
 }
