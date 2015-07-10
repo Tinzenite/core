@@ -5,12 +5,12 @@ import (
 	"crypto/cipher"
 )
 
-type Crypto struct {
+type crypto struct {
 	key []byte
 	gcm cipher.AEAD
 }
 
-func CreateCrypto(key []byte) (*Crypto, error) {
+func createCrypto(key []byte) (*crypto, error) {
 	aesBlock, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -19,15 +19,15 @@ func CreateCrypto(key []byte) (*Crypto, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Crypto{key: key,
+	return &crypto{key: key,
 		gcm: gcm}, nil
 }
 
-func (c *Crypto) Encrypt(message []byte) []byte {
+func (c *crypto) Encrypt(message []byte) []byte {
 	/*TODO I don't yet understand all this stuff, look into message structure etc!*/
 	return c.gcm.Seal(nil, []byte("noncehere!"), message, message)
 }
 
-func (c *Crypto) Decrypt(message []byte) ([]byte, error) {
+func (c *crypto) Decrypt(message []byte) ([]byte, error) {
 	return nil, nil
 }
