@@ -7,18 +7,22 @@ import (
 	"os"
 	"os/user"
 	"strings"
+	"sync"
 )
 
 /*
 Tinzenite is the struct on which all important operations should be called.
 */
 type Tinzenite struct {
-	Path     string
-	auth     *Authentication
-	selfpeer *Peer
-	channel  *Channel
-	allPeers []*Peer
-	model    *model
+	Path        string
+	auth        *Authentication
+	selfpeer    *Peer
+	channel     *Channel
+	allPeers    []*Peer
+	model       *model
+	sendChannel chan UpdateMessage
+	stop        chan bool
+	wg          sync.WaitGroup
 }
 
 /*
@@ -65,13 +69,6 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 	if err != nil {
 		return nil, err
 	}
-	// store initial copy (BEFORE MODEL because parts need to be tracked from the start!)
-	/*TODO should MODEL only write to disk explicitely too?*/
-	err = tinzenite.Store()
-	if err != nil {
-		RemoveTinzenite(dirpath)
-		return nil, err
-	}
 	// build model (can block for long!)
 	m, err := createModel(dirpath, peer.Identification)
 	if err != nil {
@@ -79,13 +76,19 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 		return nil, err
 	}
 	tinzenite.model = m
+	// store initial copy
+	err = tinzenite.Store()
+	if err != nil {
+		RemoveTinzenite(dirpath)
+		return nil, err
+	}
 	// save that this directory is now a tinzenite dir
 	err = tinzenite.storeGlobalConfig()
 	if err != nil {
 		RemoveTinzenite(dirpath)
 		return nil, err
 	}
-	/*TODO later implement that model updates are sent to all online peers --> channel and func must be init here*/
+	tinzenite.initialize()
 	return tinzenite, nil
 }
 
@@ -128,6 +131,7 @@ func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
 		return nil, err
 	}
 	t.channel = channel
+	t.initialize()
 	return t, nil
 }
 
@@ -144,34 +148,37 @@ func RemoveTinzenite(path string) error {
 }
 
 /*
-SyncModel TODO
-
-fetches model from other peers and syncs (this is for manual sync)
+Sync the entire file system model of the directory, first locally and then
+remotely if other peers are connected. NOTE: All Sync{|Local|Remote} methods can
+block for a potentially long time, especially when first run!
 */
-func (t *Tinzenite) SyncModel() error {
+func (t *Tinzenite) Sync() error {
 	// first ensure that local model is up to date
-	err := t.model.Update()
+	err := t.SyncLocal()
 	if err != nil {
 		return err
 	}
+	return t.SyncRemote()
+}
+
+/*
+SyncLocal changes. Will send updates to connected peers but not synchronize with
+other peers.
+*/
+func (t *Tinzenite) SyncLocal() error {
+	return t.model.Update()
+}
+
+/*
+SyncRemote changes. Will request the models of connected peers and merge them
+to the local peer.
+
+TODO: fetches model from other peers and syncs (this is for manual sync)
+*/
+func (t *Tinzenite) SyncRemote() error {
 	// iterate over all known peers
 	// TODO the following can be parallelized!
-	for _, peer := range t.allPeers {
-		if strings.EqualFold(peer.Address, t.selfpeer.Address) {
-			continue
-		}
-		online, _ := t.channel.IsOnline(peer.Address)
-		if !online {
-			continue
-		}
-		log.Printf("Sending request to %s.\n", peer.Address)
-		/*TODO - also make this concurrent?*/
-		t.channel.Send(peer.Address, "Want update! <-- TODO replace this message")
-		// if online -> continue
-		// if not init -> init
-		// sync
-		/*TODO must store init state in allPeers too, also in future encryption*/
-	}
+	t.send("Want update! <-- TODO replace with something sensible...")
 	return nil
 }
 
@@ -186,6 +193,10 @@ func (t *Tinzenite) Address() string {
 Close cleanly stores everything and shuts Tinzenite down.
 */
 func (t *Tinzenite) Close() {
+	// send stop signal
+	t.stop <- false
+	// wait for it to close
+	t.wg.Wait()
 	// store all information
 	t.Store()
 	// FINALLY close (afterwards because I still need info from channel for store!)
@@ -194,7 +205,9 @@ func (t *Tinzenite) Close() {
 
 /*
 Store the tinzenite directory structure to disk. Will resolve all important
-objects and store them so that it can later be reloaded.
+objects and store them so that it can later be reloaded. NOTE: Will not update
+the full model, so be sure to have called Update() to guarantee an up to date
+save.
 */
 func (t *Tinzenite) Store() error {
 	err := t.makeDotTinzenite()
@@ -220,8 +233,18 @@ func (t *Tinzenite) Store() error {
 	if err != nil {
 		return err
 	}
-	// finally store auth file
-	return t.auth.Store(t.Path)
+	// store auth file
+	err = t.auth.Store(t.Path)
+	if err != nil {
+		return err
+	}
+	// update model for tinzenite dir to catch above stores
+	err = t.model.PartialUpdate(t.Path + "/" + TINZENITEDIR)
+	if err != nil {
+		return err
+	}
+	// finally store model (last because peers and org stuff is included!)
+	return t.model.Store()
 }
 
 /*
@@ -229,6 +252,27 @@ Connect this tinzenite to another peer, beginning the bootstrap process.
 */
 func (t *Tinzenite) Connect(address string) error {
 	return t.channel.RequestConnection(address, t.selfpeer)
+}
+
+/*
+Send the given message string to all online and connected peers.
+*/
+func (t *Tinzenite) send(msg string) {
+	for _, peer := range t.allPeers {
+		if strings.EqualFold(peer.Address, t.selfpeer.Address) {
+			continue
+		}
+		online, _ := t.channel.IsOnline(peer.Address)
+		if !online {
+			continue
+		}
+		/*TODO - also make this concurrent?*/
+		t.channel.Send(peer.Address, msg)
+		// if online -> continue
+		// if not init -> init
+		// sync
+		/*TODO must store init state in allPeers too, also in future encryption*/
+	}
 }
 
 /*
@@ -357,4 +401,31 @@ func (t *Tinzenite) makeDotTinzenite() error {
 	}
 	// write required .tinignore file
 	return ioutil.WriteFile(root+"/"+TINIGNORE, []byte(TINDIRIGNORE), FILEPERMISSIONMODE)
+}
+
+/*
+initialize the background process.
+*/
+func (t *Tinzenite) initialize() {
+	// prepare send channel that will distribute updates
+	t.wg.Add(1)
+	t.stop = make(chan bool, 1)
+	t.sendChannel = make(chan UpdateMessage, 1)
+	go t.background()
+	t.model.Register(t.sendChannel)
+}
+
+/*
+background function that handles all async stuff that needs to be done.
+*/
+func (t *Tinzenite) background() {
+	for {
+		select {
+		case <-t.stop:
+			t.wg.Done()
+			return
+		case msg := <-t.sendChannel:
+			t.send(msg.String())
+		} // select
+	} // for
 }

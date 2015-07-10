@@ -46,6 +46,10 @@ func (r *relativePath) Subpath() string {
 	return strings.Join(r.stack[r.limit:], "/")
 }
 
+func (r *relativePath) Rootpath() string {
+	return strings.Join(r.stack[:r.limit], "/")
+}
+
 func (r *relativePath) Apply(path string) *relativePath {
 	if strings.HasPrefix(path, r.FullPath()) {
 		relPath := createPathRoot(path)

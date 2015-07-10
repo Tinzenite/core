@@ -22,7 +22,8 @@ type model struct {
 }
 
 /*
-CreateModel creates a new model at the specified path for the given peer id.
+CreateModel creates a new model at the specified path for the given peer id. Will
+not immediately update, must be explicitely called.
 */
 func createModel(root, peerid string) (*model, error) {
 	if !IsTinzenite(root) {
@@ -33,19 +34,12 @@ func createModel(root, peerid string) (*model, error) {
 		Tracked: make(map[string]bool),
 		Objinfo: make(map[string]staticinfo),
 		SelfID:  peerid}
-	// ensure that off line updates are caught (note that updatechan won't notify these)
-	err := m.Update()
-	if err != nil {
-		// explicitely return nil because it is a severe error
-		return nil, err
-	}
 	return m, nil
 }
 
 /*
 LoadModel loads or creates a model for the given path, depending whether a
-model.json exists for it already. Also immediately builds the model for the
-first time and stores it.
+model.json exists for it already.
 */
 func loadModel(root string) (*model, error) {
 	if !IsTinzenite(root) {
@@ -61,26 +55,26 @@ func loadModel(root string) (*model, error) {
 	if err != nil {
 		return nil, err
 	}
-	// ensure that off line updates are caught (note that updatechan won't notify these)
-	err = m.Update()
-	if err != nil {
-		// explicitely return nil because it is a severe error
-		return nil, err
-	}
 	return m, nil
 }
 
 /*
-Update the complete model state. Will if successful try to store the model to
-disk at the end. Heavy concurrency used here.
+Update the complete model state.
+*/
+func (m *model) Update() error {
+	return m.PartialUpdate(m.Root)
+}
+
+/*
+PartialUpdate of the model state.
 
 TODO Get concurrency to work here. Last time I had trouble with the Objinfo map.
 */
-func (m *model) Update() error {
+func (m *model) PartialUpdate(scope string) error {
 	if m.Tracked == nil || m.Objinfo == nil {
 		return ErrNilInternalState
 	}
-	current, err := m.populate()
+	current, err := m.populateMap()
 	var removed, created []string
 	if err != nil {
 		return err
@@ -89,6 +83,10 @@ func (m *model) Update() error {
 	relPath := createPathRoot(m.Root)
 	// now: compare old tracked with new version
 	for path := range m.Tracked {
+		// ignore if not in partial update path
+		if !strings.HasPrefix(path, scope) {
+			continue
+		}
 		_, ok := current[path]
 		if ok {
 			// paths that still exist must only be checked for MODIFY
@@ -101,6 +99,10 @@ func (m *model) Update() error {
 	}
 	// CREATED - any remaining paths are yet untracked in m.tracked
 	for path := range current {
+		// ignore if not in partial update path
+		if !strings.HasPrefix(path, scope) {
+			continue
+		}
 		created = append(created, path)
 	}
 	// update m.Tracked
@@ -112,7 +114,7 @@ func (m *model) Update() error {
 		m.applyCreate(relPath.Apply(path), nil)
 	}
 	// finally also store the model for future loads.
-	return m.store()
+	return m.Store()
 }
 
 /*
@@ -139,8 +141,8 @@ func (m *model) ApplyUpdateMessage(msg *UpdateMessage) error {
 		log.Println("Error on external apply update message!")
 		return err
 	}
-	// finally store so that we know that the update has been applied
-	return m.store()
+	// store updates to disk
+	return m.Store()
 }
 
 /*
@@ -180,7 +182,7 @@ func (m *model) Read() (*ObjectInfo, error) {
 /*
 store the model to disk in the correct directory.
 */
-func (m *model) store() error {
+func (m *model) Store() error {
 	path := m.Root + "/" + TINZENITEDIR + "/" + LOCAL + "/" + MODELJSON
 	jsonBinary, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
@@ -258,19 +260,28 @@ func (m *model) fillInfo(root *ObjectInfo, all []*ObjectInfo) *ObjectInfo {
 }
 
 /*
-populate a map[path] for the m.root path. Applies the root Matcher if provided.
+populateMap for the m.root path with all file and directory contents, with the
+matcher applied if applicable.
 */
-func (m *model) populate() (map[string]bool, error) {
-	master, err := createMatcher(m.Root)
+func (m *model) populateMap() (map[string]bool, error) {
+	return m.partialPopulateMap(m.Root)
+}
+
+/*
+partialPopulateMap for the given path with all file and directory contents within
+the given path, with the matcher applied if applicable.
+*/
+func (m *model) partialPopulateMap(path string) (map[string]bool, error) {
+	relPath := createPathRoot(m.Root).Apply(path)
+	master, err := createMatcher(relPath.Rootpath())
 	if err != nil {
 		return nil, err
 	}
-	path := createPathRoot(m.Root)
 	tracked := make(map[string]bool)
-	filepath.Walk(m.Root, func(subpath string, stat os.FileInfo, inerr error) error {
+	filepath.Walk(relPath.FullPath(), func(subpath string, stat os.FileInfo, inerr error) error {
 		// resolve matcher
-		/*TODO thie needlessly creates a lot of potential duplicates - FIXME*/
-		match := master.Resolve(path.Apply(subpath))
+		/*FIXME thie needlessly creates a lot of potential duplicates*/
+		match := master.Resolve(relPath.Apply(subpath))
 		// ignore on match
 		if match.Ignore(subpath) {
 			// SkipDir is okay even if file
@@ -383,6 +394,7 @@ func (m *model) applyRemove(path *relativePath) error {
 	/*TODO multiple peer logic*/
 	delete(m.Tracked, path.FullPath())
 	delete(m.Objinfo, path.FullPath())
+	/*FIXME: we run into a problem: at this point the file is removed and untracked...*/
 	m.notify(Remove, path)
 	return nil
 }
@@ -436,6 +448,8 @@ func (m *model) notify(op Operation, path *relativePath) {
 		obj, err := m.getInfo(path)
 		if err != nil {
 			log.Printf("Error messaging update for %s!\n", path.FullPath())
+			log.Println(err.Error())
+			return
 		}
 		m.updatechan <- UpdateMessage{Operation: op, Object: *obj}
 	}

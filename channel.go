@@ -16,11 +16,14 @@ import (
 /*
 Channel is a wrapper of the gotox wrapper that creates and manages the underlying Tox
 instance.
+
+TODO all callbacks will block, need to avoid that especially when user interaction is required
 */
 type Channel struct {
-	tox *gotox.Tox
-	/*TODO all callbacks will block, need to avoid that especially when user interaction is required*/
+	tox       *gotox.Tox
 	callbacks Callbacks
+	wg        sync.WaitGroup
+	stop      chan bool
 }
 
 // Callbacks for external wrapped access.
@@ -30,9 +33,6 @@ type Callbacks interface {
 	/*CallbackMessage is called on an incomming message.*/
 	callbackMessage(address, message string)
 }
-
-var wg sync.WaitGroup
-var stop chan bool
 
 /*
 CreateChannel creates and starts a new tox channel that continously runs in the background
@@ -87,8 +87,8 @@ func CreateChannel(name string, toxdata []byte, callbacks Callbacks) (*Channel, 
 	// register callbacks
 	channel.callbacks = callbacks
 	// now to run it:
-	wg.Add(1)
-	stop = make(chan bool, 1)
+	channel.wg.Add(1)
+	channel.stop = make(chan bool, 1)
 	go channel.run()
 	return channel, nil
 }
@@ -100,9 +100,9 @@ Close shuts down the channel.
 */
 func (channel *Channel) Close() {
 	// send stop signal
-	stop <- false
+	channel.stop <- false
 	// wait for it to close
-	wg.Wait()
+	channel.wg.Wait()
 	// kill tox
 	channel.tox.Kill()
 }
@@ -223,8 +223,8 @@ func (channel *Channel) run() {
 		temp, _ := channel.tox.IterationInterval()
 		intervall := time.Duration(temp) * time.Millisecond
 		select {
-		case <-stop:
-			wg.Done()
+		case <-channel.stop:
+			channel.wg.Done()
 			return
 		case <-time.Tick(intervall):
 			err := channel.tox.Iterate()
