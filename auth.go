@@ -35,12 +35,13 @@ func loadAuthentication(path string, password string) (*Authentication, error) {
 		return nil, err
 	}
 	/*TODO check if password ok and use to decrypt key for init*/
-	// Bcrypt password
-	passhash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+	// Bcrypt check password
+	err = bcrypt.CompareHashAndPassword([]byte(auth.Key), []byte(password))
 	if err != nil {
+		// doesn't match!
 		return nil, err
 	}
-	auth.initCipher(passhash)
+	auth.initCipher([]byte(auth.Key))
 	return auth, nil
 }
 
