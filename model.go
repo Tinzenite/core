@@ -85,12 +85,15 @@ func (m *model) Update() error {
 	if err != nil {
 		return err
 	}
+	// we'll need this for every create* op, so create only once:
+	relPath := createPathRoot(m.Root)
+	// now: compare both lists
 	for path := range m.Tracked {
 		_, ok := current[path]
 		if ok {
 			// paths that still exist must only be checked for MODIFY
 			delete(current, path)
-			m.apply(Modify, path)
+			m.applyModify(relPath.Apply(path), nil)
 		} else {
 			// REMOVED - paths that don't exist anymore have been removed
 			removed = append(removed, path)
@@ -102,12 +105,11 @@ func (m *model) Update() error {
 	}
 	// update m.Tracked
 	for _, path := range removed {
-		delete(m.Tracked, path)
-		m.apply(Remove, path)
+		m.applyRemove(relPath.Apply(path))
 	}
 	for _, path := range created {
-		m.Tracked[path] = true
-		m.apply(Create, path)
+		// nil for version because new local object
+		m.applyCreate(relPath.Apply(path), nil)
 	}
 	// finally also store the model for future loads.
 	return m.store()
@@ -121,75 +123,21 @@ be called after the file operation has been applied but before the next update!
 func (m *model) ApplyUpdateMessage(msg *UpdateMessage) error {
 	// NOTE: NO YOU CANNOT USE m.apply() FOR THIS!
 	path := createPath(m.Root, msg.Object.Path)
+	var err error
 	switch msg.Operation {
 	case Create:
-		log.Printf("Create %s\n", path.FullPath())
-		// ensure file has been written
-		if !fileExists(path.FullPath()) {
-			return errIllegalFileState
-		}
-		// sanity check if the object already exists locally
-		_, ok := m.Tracked[path.FullPath()]
-		if ok {
-			log.Println("Object already exists locally! Can not apply create!")
-			return errConflict
-		}
-		// NOTE: we don't explicitely check m.Objinfo because we'll just overwrite it if already exists
-		// build staticinfo
-		stin, err := createStaticInfo(path.FullPath(), m.SelfID)
-		if err != nil {
-			return err
-		}
-		// apply version
-		stin.Version = msg.Object.Version
-		// add obj to local model
-		m.Tracked[path.FullPath()] = true
-		m.Objinfo[path.FullPath()] = *stin
+		err = m.applyCreate(path, msg.Object.Version)
 	case Modify:
-		log.Printf("Modify %s\n", path.FullPath())
-		// ensure file has been written
-		if !fileExists(path.FullPath()) {
-			return errIllegalFileState
-		}
-		// sanity check
-		_, ok := m.Tracked[path.FullPath()]
-		if !ok {
-			log.Println("Object doesn't exist locally!")
-			return errIllegalFileState
-		}
-		// fetch stin
-		stin, ok := m.Objinfo[path.FullPath()]
-		if !ok {
-			return errModelInconsitent
-		}
-		// detect conflict
-		ver, ok := stin.Version.Valid(msg.Object.Version, m.SelfID)
-		if !ok {
-			log.Println("Merge error!")
-			/*TODO implement merge behavior in main.go*/
-			return errConflict
-		}
-		// apply version update
-		stin.Version = ver
-		// update hash and modtime
-		err := stin.UpdateFromDisk(path.FullPath())
-		if err != nil {
-			return err
-		}
-		// apply
-		m.Objinfo[path.FullPath()] = stin
+		err = m.applyModify(path, msg.Object.Version)
 	case Remove:
-		log.Printf("Remove %s\n", path.FullPath())
-		// ensure file has been removed
-		if fileExists(path.FullPath()) {
-			return errIllegalFileState
-		}
-		/*TODO multiple peer logic*/
-		delete(m.Tracked, path.FullPath())
-		delete(m.Objinfo, path.FullPath())
+		err = m.applyRemove(path)
 	default:
 		log.Printf("Unknown operation in UpdateMessage: %s\n", msg.Operation)
 		return ErrUnsupported
+	}
+	if err != nil {
+		log.Println("Error on external apply update message!")
+		return err
 	}
 	// finally store so that we know that the update has been applied
 	return m.store()
@@ -337,71 +285,96 @@ func (m *model) populate() (map[string]bool, error) {
 	return tracked, nil
 }
 
-/*
-Apply changes to the internal model state. This method does the true logic on the
-model, not touching m.Tracked. NEVER call this method outside of m.Update()!
-*/
-func (m *model) apply(op Operation, path string) {
-	// whether to send an update on updatechan
-	notify := false
-	switch op {
-	case Create:
-		notify = true
-		stin, err := createStaticInfo(path, m.SelfID)
-		if err != nil {
-			log.Println(err.Error())
-			return
-		}
-		m.Objinfo[path] = *stin
-	case Modify:
-		stin, ok := m.Objinfo[path]
-		if !ok {
-			log.Println("staticinfo lookup failed!")
-			return
-		}
-		// no need for further work here
-		if stin.Directory {
-			return
-		}
-		// if modtime still the same no need to hash again
-		stat, err := os.Lstat(path)
-		if err != nil {
-			log.Println(err.Error())
-			// Note that we don't return here because we can still continue without this check
-		} else {
-			if stat.ModTime() == stin.Modtime {
-				return
-			}
-		}
-		hash, err := contentHash(path)
-		if err != nil {
-			log.Println(err.Error())
-			return
-		}
-		// if same --> no changes, so done
-		if hash == stin.Content {
-			return
-		}
-		// otherwise a change has happened
-		notify = true
-		// update
-		stin.Content = hash
-		stin.Version.Increase(m.SelfID)
-		m.Objinfo[path] = stin
-	case Remove:
-		/*TODO: delete logic for multiple peers required!*/
-		notify = true
-		delete(m.Objinfo, path)
-		// note: m.tracked is modified in m.Update(), don't touch it here!
-	default:
-		log.Printf("Unimplemented %s operation!\n", op)
+func (m *model) applyCreate(path *relativePath, version version) error {
+	/*TODO make sure this works for both local AND remote changes!*/
+	log.Printf("Create %s\n", path.FullPath())
+	// ensure file has been written
+	if !fileExists(path.FullPath()) {
+		return errIllegalFileState
 	}
-	// send the update message
-	if notify && m.updatechan != nil {
-		relPath := createPathRoot(m.Root).Apply(path)
-		obj, err := m.getInfo(relPath)
+	// sanity check if the object already exists locally
+	_, ok := m.Tracked[path.FullPath()]
+	if ok {
+		log.Println("Object already exists locally! Can not apply create!")
+		return errConflict
+	}
+	// NOTE: we don't explicitely check m.Objinfo because we'll just overwrite it if already exists
+	// build staticinfo
+	stin, err := createStaticInfo(path.FullPath(), m.SelfID)
+	if err != nil {
+		return err
+	}
+	// apply version if given (external create)
+	if version != nil {
+		stin.Version = version
+	}
+	// add obj to local model
+	m.Tracked[path.FullPath()] = true
+	m.Objinfo[path.FullPath()] = *stin
+	m.notify(Create, path)
+	return nil
+}
+
+func (m *model) applyModify(path *relativePath, version version) error {
+	/*TODO make sure this works for both local AND remote changes!*/
+	log.Printf("Modify %s\n", path.FullPath())
+	// ensure file has been written
+	if !fileExists(path.FullPath()) {
+		return errIllegalFileState
+	}
+	// sanity check
+	_, ok := m.Tracked[path.FullPath()]
+	if !ok {
+		log.Println("Object doesn't exist locally!")
+		return errIllegalFileState
+	}
+	// fetch stin
+	stin, ok := m.Objinfo[path.FullPath()]
+	if !ok {
+		return errModelInconsitent
+	}
+	// detect conflict
+	ver, ok := stin.Version.Valid(version, m.SelfID)
+	if !ok {
+		log.Println("Merge error!")
+		/*TODO implement merge behavior in main.go*/
+		return errConflict
+	}
+	// apply version update
+	stin.Version = ver
+	// update hash and modtime
+	err := stin.UpdateFromDisk(path.FullPath())
+	if err != nil {
+		return err
+	}
+	// apply updated
+	m.Objinfo[path.FullPath()] = stin
+	m.notify(Modify, path)
+	return nil
+}
+
+func (m *model) applyRemove(path *relativePath) error {
+	/*TODO make sure this works for both local AND remote changes!*/
+	log.Printf("Remove %s\n", path.FullPath())
+	// ensure file has been removed
+	if fileExists(path.FullPath()) {
+		return errIllegalFileState
+	}
+	/*TODO multiple peer logic*/
+	delete(m.Tracked, path.FullPath())
+	delete(m.Objinfo, path.FullPath())
+	m.notify(Remove, path)
+	return nil
+}
+
+/*
+Notify the channel of the operation for the object at path.
+*/
+func (m *model) notify(op Operation, path *relativePath) {
+	if m.updatechan != nil {
+		obj, err := m.getInfo(path)
 		if err != nil {
-			log.Printf("Error messaging update for %s!\n", path)
+			log.Printf("Error messaging update for %s!\n", path.FullPath())
 		}
 		m.updatechan <- UpdateMessage{Operation: op, Object: *obj}
 	}
