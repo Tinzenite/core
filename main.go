@@ -65,6 +65,13 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 	if err != nil {
 		return nil, err
 	}
+	// store initial copy (BEFORE MODEL because parts need to be tracked from the start!)
+	/*TODO should MODEL only write to disk explicitely too?*/
+	err = tinzenite.Store()
+	if err != nil {
+		RemoveTinzenite(dirpath)
+		return nil, err
+	}
 	// build model (can block for long!)
 	m, err := createModel(dirpath, peer.Identification)
 	if err != nil {
@@ -72,12 +79,6 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 		return nil, err
 	}
 	tinzenite.model = m
-	// finally store initial copy
-	err = tinzenite.Store()
-	if err != nil {
-		RemoveTinzenite(dirpath)
-		return nil, err
-	}
 	// save that this directory is now a tinzenite dir
 	err = tinzenite.storeGlobalConfig()
 	if err != nil {
@@ -344,12 +345,16 @@ func (t *Tinzenite) storeGlobalConfig() error {
 }
 
 /*
-makeDotTinzenite creates the directory structure for the .tinzenite directory.
-
-TODO: optimize this function to check if it even needs to create these dir first?
+makeDotTinzenite creates the directory structure for the .tinzenite directory
+including the .tinignore file required for it.
 */
 func (t *Tinzenite) makeDotTinzenite() error {
 	root := t.Path + "/" + TINZENITEDIR
 	// build directory structure
-	return makeDirectories(root, ORGDIR+"/"+PEERSDIR, "temp", "removed", LOCAL)
+	err := makeDirectories(root, ORGDIR+"/"+PEERSDIR, TEMP, "removed", LOCAL)
+	if err != nil {
+		return err
+	}
+	// write required .tinignore file
+	return ioutil.WriteFile(root+"/"+TINIGNORE, []byte(TINDIRIGNORE), FILEPERMISSIONMODE)
 }

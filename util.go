@@ -59,6 +59,10 @@ func (r *relativePath) Depth() int {
 	return len(r.stack)
 }
 
+func (r *relativePath) Up() *relativePath {
+	return &relativePath{limit: r.limit, stack: r.stack[:len(r.stack)-1]}
+}
+
 /*
 IsTinzenite checks whether a given path is indeed a valid directory
 */

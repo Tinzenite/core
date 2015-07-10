@@ -87,7 +87,7 @@ func (m *model) Update() error {
 	}
 	// we'll need this for every create* op, so create only once:
 	relPath := createPathRoot(m.Root)
-	// now: compare both lists
+	// now: compare old tracked with new version
 	for path := range m.Tracked {
 		_, ok := current[path]
 		if ok {
@@ -259,16 +259,18 @@ func (m *model) fillInfo(root *ObjectInfo, all []*ObjectInfo) *ObjectInfo {
 
 /*
 populate a map[path] for the m.root path. Applies the root Matcher if provided.
-
-TODO: need to be capable of applying sub Matchers...
 */
 func (m *model) populate() (map[string]bool, error) {
-	match, err := CreateMatcher(m.Root)
+	master, err := createMatcher(m.Root)
 	if err != nil {
 		return nil, err
 	}
+	path := createPathRoot(m.Root)
 	tracked := make(map[string]bool)
 	filepath.Walk(m.Root, func(subpath string, stat os.FileInfo, inerr error) error {
+		// resolve matcher
+		/*TODO thie needlessly creates a lot of potential duplicates - FIXME*/
+		match := master.Resolve(path.Apply(subpath))
 		// ignore on match
 		if match.Ignore(subpath) {
 			// SkipDir is okay even if file
@@ -319,6 +321,8 @@ func (m *model) applyCreate(path *relativePath, version version) error {
 
 /*
 applyModify checks for modifications and if valid applies them to the local model.
+Conflicts will result in deletion of the old file and two creations of both versions
+of the conflict.
 */
 func (m *model) applyModify(path *relativePath, version version) error {
 	// ensure file has been written
@@ -381,6 +385,10 @@ func (m *model) applyRemove(path *relativePath) error {
 	delete(m.Objinfo, path.FullPath())
 	m.notify(Remove, path)
 	return nil
+}
+
+func (m *model) applyMerge() {
+
 }
 
 /*

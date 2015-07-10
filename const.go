@@ -44,6 +44,7 @@ const (
 	TINIGNORE     = ".tinignore"
 	DIRECTORYLIST = "directory.list"
 	LOCAL         = "local"
+	TEMP          = "temp"
 	ORGDIR        = "org"
 	PEERSDIR      = "peers"
 	ENDING        = ".json"
@@ -51,6 +52,9 @@ const (
 	MODELJSON     = "model" + ENDING
 	SELFPEERJSON  = "self" + ENDING
 )
+
+// .tinignore content for .tinzenite directory
+const TINDIRIGNORE = "# DO NOT MODIFY!\n/" + LOCAL + "\n/" + TEMP
 
 /*
 CommunicationMethod is an enumeration for the available communication methods

@@ -9,7 +9,7 @@ import (
 /*
 Matcher is a helper object that checks paths against a .tinignore file.
 */
-type Matcher struct {
+type matcher struct {
 	root      string
 	dirRules  []string
 	fileRules []string
@@ -21,13 +21,13 @@ CreateMatcher creates a new matching object for fast checks against a .tinignore
 file. The root path is the directory where the .tinignore file is expected to lie
 in.
 */
-func CreateMatcher(rootPath string) (*Matcher, error) {
-	var matcher Matcher
-	matcher.root = rootPath
+func createMatcher(rootPath string) (*matcher, error) {
+	var match matcher
+	match.root = rootPath
 	allRules, err := readTinIgnore(rootPath)
 	if err == ErrNoTinIgnore {
 		// if empty we're done
-		return &matcher, nil
+		return &match, nil
 	} else if err != nil {
 		// return other errors however
 		return nil, err
@@ -35,30 +35,30 @@ func CreateMatcher(rootPath string) (*Matcher, error) {
 	for _, line := range allRules {
 		// is the line a rule for a directory?
 		if strings.HasPrefix(line, "/") {
-			matcher.dirRules = append(matcher.dirRules, line)
+			match.dirRules = append(match.dirRules, line)
 		} else {
-			matcher.fileRules = append(matcher.fileRules, line)
+			match.fileRules = append(match.fileRules, line)
 		}
 	}
 	// possibly empty .tinignore so catch
-	if len(matcher.dirRules) != 0 || len(matcher.fileRules) != 0 {
+	if len(match.dirRules) != 0 || len(match.fileRules) != 0 {
 		// if we have values set it
-		matcher.used = true
+		match.used = true
 	}
-	return &matcher, nil
+	return &match, nil
 }
 
 /*
 Ignore checks whether the given path is to be ignored given the rules within the
 root .tinignore file.
 */
-func (matcher *Matcher) Ignore(path string) bool {
+func (m *matcher) Ignore(path string) bool {
 	// no need to check anything in this case
-	if matcher.IsEmpty() {
+	if m.IsEmpty() {
 		return false
 	}
 	// start with directories as we always need to check these
-	for _, dirLine := range matcher.dirRules {
+	for _, dirLine := range m.dirRules {
 		// contains because may be subdir already
 		if strings.Contains(path, dirLine) {
 			return true
@@ -69,9 +69,10 @@ func (matcher *Matcher) Ignore(path string) bool {
 	if err != nil {
 		return false
 	}
+	// no need to check file stuff if path points to directory
 	if !info.IsDir() {
 		// check files
-		for _, fileLine := range matcher.fileRules {
+		for _, fileLine := range m.fileRules {
 			// suffix because rest of path doesn't matter for file matches
 			if strings.HasSuffix(path, fileLine) {
 				return true
@@ -84,15 +85,37 @@ func (matcher *Matcher) Ignore(path string) bool {
 /*
 IsEmpty can be used to see if the matcher contains any rules at all.
 */
-func (matcher *Matcher) IsEmpty() bool {
-	return !matcher.used
+func (m *matcher) IsEmpty() bool {
+	return !m.used
 }
 
 /*
 Same returns true if the path is the path for this matcher.
 */
-func (matcher *Matcher) Same(path string) bool {
-	return path == matcher.root
+func (m *matcher) Same(path string) bool {
+	return path == m.root
+}
+
+/*
+Resolve the matcher for the given path from the bottom up. If no matcher is found
+on any subpath, the original matcher is returned.
+*/
+func (m *matcher) Resolve(path *relativePath) *matcher {
+	for hasTinIgnore(path.FullPath()) != true {
+		path = path.Up()
+	}
+	matcher, err := createMatcher(path.FullPath())
+	if err != nil {
+		return m
+	}
+	if matcher.Same(m.root) {
+		return m
+	}
+	return matcher
+}
+
+func (m *matcher) String() string {
+	return "Matcher of <" + m.root + ">"
 }
 
 /*
@@ -110,9 +133,23 @@ func readTinIgnore(path string) ([]string, error) {
 	list := strings.Split(string(data), "\n")
 	var sanitized []string
 	for _, value := range list {
-		if value != "" {
-			sanitized = append(sanitized, value)
+		// filter out comments
+		if strings.HasPrefix(value, "#") {
+			continue
 		}
+		// ignore empty lines
+		if value == "" {
+			continue
+		}
+		sanitized = append(sanitized, value)
 	}
 	return sanitized, nil
+}
+
+/*
+hasTinIgnore checks whether the path has a .tinignore file.
+*/
+func hasTinIgnore(path string) bool {
+	_, err := ioutil.ReadFile(path + "/" + TINIGNORE)
+	return err == nil
 }
