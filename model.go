@@ -285,9 +285,11 @@ func (m *model) populate() (map[string]bool, error) {
 	return tracked, nil
 }
 
+/*
+applyCreate applies a create operation to the local model given that the file
+exists.
+*/
 func (m *model) applyCreate(path *relativePath, version version) error {
-	/*TODO make sure this works for both local AND remote changes!*/
-	log.Printf("Create %s\n", path.FullPath())
 	// ensure file has been written
 	if !fileExists(path.FullPath()) {
 		return errIllegalFileState
@@ -304,7 +306,7 @@ func (m *model) applyCreate(path *relativePath, version version) error {
 	if err != nil {
 		return err
 	}
-	// apply version if given (external create)
+	// apply version if given (external create) otherwise keep default one
 	if version != nil {
 		stin.Version = version
 	}
@@ -315,9 +317,10 @@ func (m *model) applyCreate(path *relativePath, version version) error {
 	return nil
 }
 
+/*
+applyModify checks for modifications and if valid applies them to the local model.
+*/
 func (m *model) applyModify(path *relativePath, version version) error {
-	/*TODO make sure this works for both local AND remote changes!*/
-	log.Printf("Modify %s\n", path.FullPath())
 	// ensure file has been written
 	if !fileExists(path.FullPath()) {
 		return errIllegalFileState
@@ -333,29 +336,56 @@ func (m *model) applyModify(path *relativePath, version version) error {
 	if !ok {
 		return errModelInconsitent
 	}
-	// detect conflict
-	ver, ok := stin.Version.Valid(version, m.SelfID)
-	if !ok {
-		log.Println("Merge error!")
-		/*TODO implement merge behavior in main.go*/
-		return errConflict
+	// DEBUG var
+	var local bool
+	// check for local modifications and apply first no matter what
+	if m.isModified(path.FullPath()) {
+		// update hash and modtime
+		err := stin.UpdateFromDisk(path.FullPath())
+		if err != nil {
+			return err
+		}
+		// update version
+		stin.Version.Increase(m.SelfID)
+		// apply updated
+		m.Objinfo[path.FullPath()] = stin
+		m.notify(Modify, path)
+		local = true
 	}
-	// apply version update
-	stin.Version = ver
-	// update hash and modtime
-	err := stin.UpdateFromDisk(path.FullPath())
-	if err != nil {
-		return err
+	// check for remote modifications
+	// NOTE: if local modify happened this WILL result in a merge conflict!
+	if version != nil {
+		/*TODO implement conflict behaviour!*/
+		if local {
+			// debug check
+			log.Println("THIS SHOULD result in CONFLICT!")
+		}
+		// detect conflict
+		ver, ok := stin.Version.Valid(version, m.SelfID)
+		if !ok {
+			log.Println("Merge error!")
+			/*TODO implement merge behavior in main.go*/
+			return errConflict
+		}
+		// apply version update
+		stin.Version = ver
+		// update hash and modtime
+		err := stin.UpdateFromDisk(path.FullPath())
+		if err != nil {
+			return err
+		}
+		// apply updated
+		m.Objinfo[path.FullPath()] = stin
+		m.notify(Modify, path)
 	}
-	// apply updated
-	m.Objinfo[path.FullPath()] = stin
-	m.notify(Modify, path)
 	return nil
 }
 
+/*
+applyRemove applies a remove operation.
+*/
 func (m *model) applyRemove(path *relativePath) error {
 	/*TODO make sure this works for both local AND remote changes!*/
-	log.Printf("Remove %s\n", path.FullPath())
 	// ensure file has been removed
 	if fileExists(path.FullPath()) {
 		return errIllegalFileState
@@ -368,9 +398,46 @@ func (m *model) applyRemove(path *relativePath) error {
 }
 
 /*
+isModified checks whether a file has been modified.
+*/
+func (m *model) isModified(path string) bool {
+	stin, ok := m.Objinfo[path]
+	if !ok {
+		log.Println("staticinfo lookup failed!")
+		return false
+	}
+	// no need for further work here
+	if stin.Directory {
+		return false
+	}
+	// if modtime still the same no need to hash again
+	stat, err := os.Lstat(path)
+	if err != nil {
+		log.Println(err.Error())
+		// Note that we don't return here because we can still continue without this check
+	} else {
+		if stat.ModTime() == stin.Modtime {
+			return false
+		}
+	}
+	hash, err := contentHash(path)
+	if err != nil {
+		log.Println(err.Error())
+		return false
+	}
+	// if same --> no changes, so done
+	if hash == stin.Content {
+		return false
+	}
+	// otherwise a change has happened
+	return true
+}
+
+/*
 Notify the channel of the operation for the object at path.
 */
 func (m *model) notify(op Operation, path *relativePath) {
+	log.Printf("%s: %s\n", op, path.LastElement())
 	if m.updatechan != nil {
 		obj, err := m.getInfo(path)
 		if err != nil {
