@@ -336,30 +336,13 @@ func (m *model) applyModify(path *relativePath, version version) error {
 	if !ok {
 		return errModelInconsitent
 	}
-	// DEBUG var
-	var local bool
-	// check for local modifications and apply first no matter what
-	if m.isModified(path.FullPath()) {
-		// update hash and modtime
-		err := stin.UpdateFromDisk(path.FullPath())
-		if err != nil {
-			return err
-		}
-		// update version
-		stin.Version.Increase(m.SelfID)
-		// apply updated
-		m.Objinfo[path.FullPath()] = stin
-		m.notify(Modify, path)
-		local = true
+	// if file hasn't changed we're done
+	if !m.isModified(path.FullPath()) {
+		return nil
 	}
 	// check for remote modifications
-	// NOTE: if local modify happened this WILL result in a merge conflict!
 	if version != nil {
 		/*TODO implement conflict behaviour!*/
-		if local {
-			// debug check
-			log.Println("THIS SHOULD result in CONFLICT!")
-		}
 		// detect conflict
 		ver, ok := stin.Version.Valid(version, m.SelfID)
 		if !ok {
@@ -369,15 +352,18 @@ func (m *model) applyModify(path *relativePath, version version) error {
 		}
 		// apply version update
 		stin.Version = ver
-		// update hash and modtime
-		err := stin.UpdateFromDisk(path.FullPath())
-		if err != nil {
-			return err
-		}
-		// apply updated
-		m.Objinfo[path.FullPath()] = stin
-		m.notify(Modify, path)
+	} else {
+		// update version for local change
+		stin.Version.Increase(m.SelfID)
 	}
+	// update hash and modtime
+	err := stin.UpdateFromDisk(path.FullPath())
+	if err != nil {
+		return err
+	}
+	// apply updated
+	m.Objinfo[path.FullPath()] = stin
+	m.notify(Modify, path)
 	return nil
 }
 
