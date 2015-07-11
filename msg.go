@@ -3,6 +3,11 @@ package core
 import "encoding/json"
 
 /*
+TODO: check if via Unmarshal Method we can output the enums as strings instead of
+integer values. Should be written to enums.go, I guess?
+*/
+
+/*
 Message is a base type for only reading out the operation to define the message
 type.
 */
