@@ -24,6 +24,27 @@ func (cm Communication) String() string {
 	}
 }
 
+type MsgType int
+
+const (
+	MsgNone MsgType = iota
+	MsgUpdate
+	MsgRequest
+)
+
+func (msg MsgType) String() string {
+	switch msg {
+	case MsgNone:
+		return "none"
+	case MsgUpdate:
+		return "update"
+	case MsgRequest:
+		return "request"
+	default:
+		return "unknown"
+	}
+}
+
 /*
 Operation is the enumeration for the possible protocol operations.
 */

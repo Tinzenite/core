@@ -301,6 +301,30 @@ func (t *Tinzenite) callbackNewConnection(address, message string) {
 CallbackMessage is called when a message is received.
 */
 func (t *Tinzenite) callbackMessage(address, message string) {
+	// find out type of message
+	v := &Message{}
+	err := json.Unmarshal([]byte(message), v)
+	if err == nil {
+		switch msgType := v.Type; msgType {
+		case MsgUpdate:
+			log.Println("Update received!")
+			// Unmarshal to correct msg type:
+			msg := &UpdateMessage{}
+			err := json.Unmarshal([]byte(message), msg)
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
+			/*TODO implement application of msg*/
+			log.Printf("%+v\n", msg)
+		case MsgRequest:
+			log.Println("Request received!")
+		default:
+			log.Printf("Unknown object sent: %s!\n", msgType)
+		}
+		return
+	}
+	// if unmarshal didn't work check for plain commands:
 	switch message {
 	case "model":
 		t.channel.Send(address, t.model.String())

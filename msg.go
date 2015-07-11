@@ -3,11 +3,27 @@ package core
 import "encoding/json"
 
 /*
+Message is a base type for only reading out the operation to define the message
+type.
+*/
+type Message struct {
+	Type MsgType
+}
+
+/*
 UpdateMessage contains the relevant information for notifiying peers of updates.
 */
 type UpdateMessage struct {
+	Type      MsgType
 	Operation Operation
 	Object    ObjectInfo
+}
+
+func createUpdateMessage(op Operation, obj ObjectInfo) UpdateMessage {
+	return UpdateMessage{
+		Type:      MsgUpdate,
+		Operation: op,
+		Object:    obj}
 }
 
 func (um *UpdateMessage) String() string {
@@ -20,8 +36,16 @@ RequestMessage is used to trigger the sending of messages or files from other
 peers.
 */
 type RequestMessage struct {
+	Type    MsgType
 	Request Request
 	Object  string
+}
+
+func createRequestMessage(req Request, identification string) RequestMessage {
+	return RequestMessage{
+		Type:    MsgRequest,
+		Request: req,
+		Object:  identification}
 }
 
 func (rm *RequestMessage) String() string {

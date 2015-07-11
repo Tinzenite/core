@@ -451,7 +451,7 @@ func (m *model) notify(op Operation, path *relativePath) {
 			log.Println(err.Error())
 			return
 		}
-		m.updatechan <- UpdateMessage{Operation: op, Object: *obj}
+		m.updatechan <- createUpdateMessage(op, *obj)
 	}
 }
 
