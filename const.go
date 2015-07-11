@@ -63,18 +63,20 @@ of Tinzenite peers.
 type CommunicationMethod int
 
 const (
-	/*None method.*/
-	None CommunicationMethod = iota
-	/*Tox protocol.*/
-	Tox
+	/*CmNone method.*/
+	CmNone CommunicationMethod = iota
+	/*CmTox protocol.*/
+	CmTox
 )
 
 func (communicationMethod CommunicationMethod) String() string {
 	switch communicationMethod {
-	case Tox:
+	case CmNone:
+		return "None"
+	case CmTox:
 		return "Tox"
 	default:
-		return "None"
+		return "unknown"
 	}
 }
 
@@ -84,23 +86,23 @@ Operation is the enumeration for the possible protocol operations.
 type Operation int
 
 const (
-	/*Unknown operation.*/
-	Unknown = iota
-	/*Create operation.*/
-	Create
-	/*Modify operation.*/
-	Modify
-	/*Remove operation.*/
-	Remove
+	/*OpUnknown operation.*/
+	OpUnknown = iota
+	/*OpCreate operation.*/
+	OpCreate
+	/*OpModify operation.*/
+	OpModify
+	/*OpRemove operation.*/
+	OpRemove
 )
 
 func (op Operation) String() string {
 	switch op {
-	case Create:
+	case OpCreate:
 		return "create"
-	case Modify:
+	case OpModify:
 		return "modify"
-	case Remove:
+	case OpRemove:
 		return "remove"
 	default:
 		return "unknown"

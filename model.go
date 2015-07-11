@@ -127,11 +127,11 @@ func (m *model) ApplyUpdateMessage(msg *UpdateMessage) error {
 	path := createPath(m.Root, msg.Object.Path)
 	var err error
 	switch msg.Operation {
-	case Create:
+	case OpCreate:
 		err = m.applyCreate(path, msg.Object.Version)
-	case Modify:
+	case OpModify:
 		err = m.applyModify(path, msg.Object.Version)
-	case Remove:
+	case OpRemove:
 		err = m.applyRemove(path)
 	default:
 		log.Printf("Unknown operation in UpdateMessage: %s\n", msg.Operation)
@@ -326,7 +326,7 @@ func (m *model) applyCreate(path *relativePath, version version) error {
 	// add obj to local model
 	m.Tracked[path.FullPath()] = true
 	m.Objinfo[path.FullPath()] = *stin
-	m.notify(Create, path)
+	m.notify(OpCreate, path)
 	return nil
 }
 
@@ -378,7 +378,7 @@ func (m *model) applyModify(path *relativePath, version version) error {
 	}
 	// apply updated
 	m.Objinfo[path.FullPath()] = stin
-	m.notify(Modify, path)
+	m.notify(OpModify, path)
 	return nil
 }
 
@@ -395,7 +395,7 @@ func (m *model) applyRemove(path *relativePath) error {
 	delete(m.Tracked, path.FullPath())
 	delete(m.Objinfo, path.FullPath())
 	/*FIXME: we run into a problem: at this point the file is removed and untracked...*/
-	m.notify(Remove, path)
+	m.notify(OpRemove, path)
 	return nil
 }
 

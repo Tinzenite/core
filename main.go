@@ -60,7 +60,7 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 	peer := &Peer{
 		Name:           peername,
 		Address:        address,
-		Protocol:       Tox,
+		Protocol:       CmTox,
 		Identification: peerhash}
 	tinzenite.selfpeer = peer
 	tinzenite.allPeers = []*Peer{peer}
@@ -292,7 +292,7 @@ func (t *Tinzenite) callbackNewConnection(address, message string) {
 		Identification: newID,   // must be read from message
 		Name:           message, // must be read from message
 		Address:        address,
-		Protocol:       Tox})
+		Protocol:       CmTox})
 	// actually we just want to get type and confidence from the user here, and if everything
 	// is okay we accept the connection --> then what? need to bootstrap him...
 }
@@ -313,7 +313,7 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		os.Create(t.Path + "/test.txt")
 		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
 		t.model.ApplyUpdateMessage(&UpdateMessage{
-			Operation: Create,
+			Operation: OpCreate,
 			Object:    *obj})
 	case "modify":
 		// MODIFY
@@ -330,7 +330,7 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		// write change
 		ioutil.WriteFile(t.Path+"/test.txt", []byte("hello world"), FILEPERMISSIONMODE)
 		t.model.ApplyUpdateMessage(&UpdateMessage{
-			Operation: Modify,
+			Operation: OpModify,
 			Object:    *obj})
 	case "conflict":
 		// MODIFY that creates merge conflict
@@ -340,7 +340,7 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		log.Println("Sending: " + obj.Version.String())
 		ioutil.WriteFile(t.Path+"/test.txt", []byte("hello world"), FILEPERMISSIONMODE)
 		t.model.ApplyUpdateMessage(&UpdateMessage{
-			Operation: Modify,
+			Operation: OpModify,
 			Object:    *obj})
 	case "delete":
 		// DELETE
@@ -351,7 +351,7 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		}
 		os.Remove(t.Path + "/test.txt")
 		t.model.ApplyUpdateMessage(&UpdateMessage{
-			Operation: Remove,
+			Operation: OpRemove,
 			Object:    *obj})
 	default:
 		t.channel.Send(address, "ACK")
