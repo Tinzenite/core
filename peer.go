@@ -12,7 +12,7 @@ Peer is the communication representation of a Tinzenite peer.
 type Peer struct {
 	Name           string
 	Address        string
-	Protocol       CommunicationMethod
+	Protocol       Communication
 	encrypted      bool
 	Identification string
 	initialized    bool
