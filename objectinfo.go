@@ -1,7 +1,5 @@
 package core
 
-import "log"
-
 /*
 ObjectInfo represents the in model object fully.
 */
@@ -42,21 +40,4 @@ and identification. NOTE: Does not compare any other properties!
 */
 func (o *ObjectInfo) Equal(that *ObjectInfo) bool {
 	return o == that || o.Identification == that.Identification
-}
-
-/*
-
-*/
-func (o *ObjectInfo) apply(that *ObjectInfo, selfpeerid string) error {
-	// if not same object break right away
-	if !o.Equal(that) {
-		return errWrongObject
-	}
-	// first check for sanity
-	if o.Version[selfpeerid] != that.Version[selfpeerid] {
-		log.Println("Something BIG went wrong!")
-		return errConflict
-	}
-	/*TODO need to put more thought into this...*/
-	return ErrUnsupported
 }

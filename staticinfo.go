@@ -65,3 +65,13 @@ func (s *staticinfo) UpdateFromDisk(path string) error {
 	s.Modtime = stat.ModTime()
 	return nil
 }
+
+/*
+ApplyObjectInfo to staticinfo object.
+*/
+func (s *staticinfo) ApplyObjectInfo(obj *ObjectInfo) {
+	s.Identification = obj.Identification
+	s.Version = obj.Version
+	s.Directory = obj.directory
+	s.Content = obj.Content
+}

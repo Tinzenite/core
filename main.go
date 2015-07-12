@@ -331,16 +331,17 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 	case "auth":
 		authbin, _ := json.Marshal(t.auth)
 		t.channel.Send(address, string(authbin))
-	case "create": // TEST ONLY
-		/* TODO continue these tests!*/
+	case "create":
 		// CREATE
+		// messy but works: create file correctly, create objs, then move it to the correct temp location
 		os.Create(t.Path + "/test.txt")
+		ioutil.WriteFile(t.Path+"/test.txt", []byte("bonjour!"), FILEPERMISSIONMODE)
 		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
+		os.Rename(t.Path+"/test.txt", t.Path+"/"+TINZENITEDIR+"/"+TEMP+"/"+obj.Identification)
 		t.model.ApplyUpdateMessage(&UpdateMessage{
 			Operation: OpCreate,
 			Object:    *obj})
 	case "modify":
-		path := t.Path + "/" + TINZENITEDIR + "/" + TEMP
 		// MODIFY
 		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
 		orig, _ := t.model.Objinfo[t.Path+"/test.txt"]
@@ -355,11 +356,17 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		}
 		// add one new version
 		obj.Version.Increase("otheridhere")
-		// write change to file in temp, simulating successful download
-		ioutil.WriteFile(path+"/"+obj.Identification, []byte("hello world"), FILEPERMISSIONMODE)
-		t.model.ApplyUpdateMessage(&UpdateMessage{
+		err := t.model.ApplyUpdateMessage(&UpdateMessage{
 			Operation: OpModify,
 			Object:    *obj})
+		if err != nil {
+			log.Println(err.Error())
+		}
+	case "sendmodify":
+		path := t.Path + "/" + TINZENITEDIR + "/" + TEMP
+		orig, _ := t.model.Objinfo[t.Path+"/test.txt"]
+		// write change to file in temp, simulating successful download
+		ioutil.WriteFile(path+"/"+orig.Identification, []byte("hello world"), FILEPERMISSIONMODE)
 	case "conflict":
 		// MODIFY that creates merge conflict
 		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")

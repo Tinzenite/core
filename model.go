@@ -128,9 +128,9 @@ func (m *model) ApplyUpdateMessage(msg *UpdateMessage) error {
 	var err error
 	switch msg.Operation {
 	case OpCreate:
-		err = m.applyCreate(path, msg.Object.Version)
+		err = m.applyCreate(path, &msg.Object)
 	case OpModify:
-		err = m.applyModify(path, msg.Object.Version)
+		err = m.applyModify(path, &msg.Object)
 	case OpRemove:
 		err = m.applyRemove(path)
 	default:
@@ -302,11 +302,9 @@ func (m *model) partialPopulateMap(path string) (map[string]bool, error) {
 applyCreate applies a create operation to the local model given that the file
 exists.
 */
-func (m *model) applyCreate(path *relativePath, version version) error {
-	// ensure file has been written
-	if !fileExists(path.FullPath()) {
-		return errIllegalFileState
-	}
+func (m *model) applyCreate(path *relativePath, remoteObject *ObjectInfo) error {
+	// ensure no file has been written already
+	localCreate := fileExists(path.FullPath())
 	// sanity check if the object already exists locally
 	_, ok := m.Tracked[path.FullPath()]
 	if ok {
@@ -314,14 +312,35 @@ func (m *model) applyCreate(path *relativePath, version version) error {
 		return errConflict
 	}
 	// NOTE: we don't explicitely check m.Objinfo because we'll just overwrite it if already exists
-	// build staticinfo
-	stin, err := createStaticInfo(path.FullPath(), m.SelfID)
-	if err != nil {
-		return err
-	}
-	// apply version if given (external create) otherwise keep default one
-	if version != nil {
-		stin.Version = version
+	var stin *staticinfo
+	var err error
+	// if remote create
+	if remoteObject != nil {
+		/*TODO is this a create conflict?*/
+		if localCreate {
+			return errIllegalFileState
+		}
+		// apply file op
+		err := m.applyFile(remoteObject.Identification, path.FullPath())
+		if err != nil {
+			return err
+		}
+		// build staticinfo
+		stin, err = createStaticInfo(path.FullPath(), m.SelfID)
+		if err != nil {
+			return err
+		}
+		// apply external attributes
+		stin.ApplyObjectInfo(remoteObject)
+	} else {
+		if !localCreate {
+			return errIllegalFileState
+		}
+		// build staticinfo
+		stin, err = createStaticInfo(path.FullPath(), m.SelfID)
+		if err != nil {
+			return err
+		}
 	}
 	// add obj to local model
 	m.Tracked[path.FullPath()] = true
@@ -335,7 +354,7 @@ applyModify checks for modifications and if valid applies them to the local mode
 Conflicts will result in deletion of the old file and two creations of both versions
 of the conflict.
 */
-func (m *model) applyModify(path *relativePath, version version) error {
+func (m *model) applyModify(path *relativePath, remoteObject *ObjectInfo) error {
 	// ensure file has been written
 	if !fileExists(path.FullPath()) {
 		return errIllegalFileState
@@ -354,7 +373,7 @@ func (m *model) applyModify(path *relativePath, version version) error {
 	// flag whether the local file has been modified
 	localModified := m.isModified(path.FullPath())
 	// check for remote modifications
-	if version != nil {
+	if remoteObject != nil {
 		/*TODO implement conflict behaviour!*/
 		// if remote change the local file may not have been modified
 		if localModified {
@@ -362,7 +381,7 @@ func (m *model) applyModify(path *relativePath, version version) error {
 			return errConflict
 		}
 		// detect conflict
-		ver, ok := stin.Version.Valid(version, m.SelfID)
+		ver, ok := stin.Version.Valid(remoteObject.Version, m.SelfID)
 		if !ok {
 			log.Println("Merge error!")
 			/*TODO implement merge behavior in main.go*/
@@ -370,8 +389,8 @@ func (m *model) applyModify(path *relativePath, version version) error {
 		}
 		// apply version update
 		stin.Version = ver
-		// move file from temp to correct path, overwritting old version
-		err := os.Rename(m.Root+"/"+TINZENITEDIR+"/"+TEMP+"/"+stin.Identification, path.FullPath())
+		// apply the file op
+		err := m.applyFile(stin.Identification, path.FullPath())
 		if err != nil {
 			return err
 		}
@@ -411,10 +430,6 @@ func (m *model) applyRemove(path *relativePath) error {
 	return nil
 }
 
-func (m *model) applyMerge() {
-
-}
-
 /*
 isModified checks whether a file has been modified.
 */
@@ -449,6 +464,21 @@ func (m *model) isModified(path string) bool {
 	}
 	// otherwise a change has happened
 	return true
+}
+
+/*
+applyFile from temp dir to correct path. Checks and executes the move.
+*/
+func (m *model) applyFile(identification string, path string) error {
+	// path to were the modified file sits before being applied
+	temppath := m.Root + "/" + TINZENITEDIR + "/" + TEMP + "/" + identification
+	// check that it exists
+	_, err := os.Lstat(temppath)
+	if err != nil {
+		return errMissingUpdateFile
+	}
+	// move file from temp to correct path, overwritting old version
+	return os.Rename(temppath, path)
 }
 
 /*

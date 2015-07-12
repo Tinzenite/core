@@ -18,10 +18,11 @@ var (
 Internal errors of Tinzenite.
 */
 var (
-	errWrongObject      = errors.New("Wrong ObjectInfo!")
-	errConflict         = errors.New("Conflict, can not apply!")
-	errIllegalFileState = errors.New("Illegal file state detected!")
-	errModelInconsitent = errors.New("Model tracked and staticinfo are inconsistent!")
+	errWrongObject       = errors.New("Wrong ObjectInfo!")
+	errConflict          = errors.New("Conflict, can not apply!")
+	errIllegalFileState  = errors.New("Illegal file state detected!")
+	errModelInconsitent  = errors.New("Model tracked and staticinfo are inconsistent!")
+	errMissingUpdateFile = errors.New("File for update missing from temp!")
 )
 
 // constant value here
