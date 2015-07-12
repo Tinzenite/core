@@ -340,9 +340,13 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 			Operation: OpCreate,
 			Object:    *obj})
 	case "modify":
+		path := t.Path + "/" + TINZENITEDIR + "/" + TEMP
 		// MODIFY
 		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
 		orig, _ := t.model.Objinfo[t.Path+"/test.txt"]
+		// id must be same
+		obj.Identification = orig.Identification
+		// version apply so that we can always "update" it
 		obj.Version[t.model.SelfID] = orig.Version[t.model.SelfID]
 		// if orig already has, increase further
 		value, ok := orig.Version["otheridhere"]
@@ -351,8 +355,8 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		}
 		// add one new version
 		obj.Version.Increase("otheridhere")
-		// write change
-		ioutil.WriteFile(t.Path+"/test.txt", []byte("hello world"), FILEPERMISSIONMODE)
+		// write change to file in temp, simulating successful download
+		ioutil.WriteFile(path+"/"+obj.Identification, []byte("hello world"), FILEPERMISSIONMODE)
 		t.model.ApplyUpdateMessage(&UpdateMessage{
 			Operation: OpModify,
 			Object:    *obj})

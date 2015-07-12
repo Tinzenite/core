@@ -351,13 +351,16 @@ func (m *model) applyModify(path *relativePath, version version) error {
 	if !ok {
 		return errModelInconsitent
 	}
-	// if file hasn't changed we're done
-	if !m.isModified(path.FullPath()) {
-		return nil
-	}
+	// flag whether the local file has been modified
+	localModified := m.isModified(path.FullPath())
 	// check for remote modifications
 	if version != nil {
 		/*TODO implement conflict behaviour!*/
+		// if remote change the local file may not have been modified
+		if localModified {
+			log.Println("Merge error! Untracked local changes!")
+			return errConflict
+		}
 		// detect conflict
 		ver, ok := stin.Version.Valid(version, m.SelfID)
 		if !ok {
@@ -367,7 +370,16 @@ func (m *model) applyModify(path *relativePath, version version) error {
 		}
 		// apply version update
 		stin.Version = ver
+		// move file from temp to correct path, overwritting old version
+		err := os.Rename(m.Root+"/"+TINZENITEDIR+"/"+TEMP+"/"+stin.Identification, path.FullPath())
+		if err != nil {
+			return err
+		}
 	} else {
+		if !localModified {
+			// nothing to do, done
+			return nil
+		}
 		// update version for local change
 		stin.Version.Increase(m.SelfID)
 	}
