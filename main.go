@@ -337,7 +337,7 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		os.Create(t.Path + "/test.txt")
 		ioutil.WriteFile(t.Path+"/test.txt", []byte("bonjour!"), FILEPERMISSIONMODE)
 		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
-		os.Rename(t.Path+"/test.txt", t.Path+"/"+TINZENITEDIR+"/"+TEMP+"/"+obj.Identification)
+		os.Rename(t.Path+"/test.txt", t.Path+"/"+TINZENITEDIR+"/"+TEMPDIR+"/"+obj.Identification)
 		t.model.ApplyUpdateMessage(&UpdateMessage{
 			Operation: OpCreate,
 			Object:    *obj})
@@ -363,7 +363,7 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 			log.Println(err.Error())
 		}
 	case "sendmodify":
-		path := t.Path + "/" + TINZENITEDIR + "/" + TEMP
+		path := t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
 		orig, _ := t.model.Objinfo[t.Path+"/test.txt"]
 		// write change to file in temp, simulating successful download
 		ioutil.WriteFile(path+"/"+orig.Identification, []byte("hello world"), FILEPERMISSIONMODE)
@@ -430,7 +430,7 @@ including the .tinignore file required for it.
 func (t *Tinzenite) makeDotTinzenite() error {
 	root := t.Path + "/" + TINZENITEDIR
 	// build directory structure
-	err := makeDirectories(root, ORGDIR+"/"+PEERSDIR, TEMP, "removed", LOCAL)
+	err := makeDirectories(root, ORGDIR+"/"+PEERSDIR, TEMPDIR, REMOVEDIR, LOCALDIR)
 	if err != nil {
 		return err
 	}

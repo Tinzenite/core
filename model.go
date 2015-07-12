@@ -46,7 +46,7 @@ func loadModel(root string) (*model, error) {
 		return nil, ErrNotTinzenite
 	}
 	var m *model
-	data, err := ioutil.ReadFile(root + "/" + TINZENITEDIR + "/" + LOCAL + "/" + MODELJSON)
+	data, err := ioutil.ReadFile(root + "/" + TINZENITEDIR + "/" + LOCALDIR + "/" + MODELJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func (m *model) PartialUpdate(scope string) error {
 	}
 	// update m.Tracked
 	for _, path := range removed {
-		m.applyRemove(relPath.Apply(path))
+		m.applyRemove(relPath.Apply(path), nil)
 	}
 	for _, path := range created {
 		// nil for version because new local object
@@ -132,7 +132,7 @@ func (m *model) ApplyUpdateMessage(msg *UpdateMessage) error {
 	case OpModify:
 		err = m.applyModify(path, &msg.Object)
 	case OpRemove:
-		err = m.applyRemove(path)
+		err = m.applyRemove(path, &msg.Object)
 	default:
 		log.Printf("Unknown operation in UpdateMessage: %s\n", msg.Operation)
 		return ErrUnsupported
@@ -183,7 +183,7 @@ func (m *model) Read() (*ObjectInfo, error) {
 store the model to disk in the correct directory.
 */
 func (m *model) Store() error {
-	path := m.Root + "/" + TINZENITEDIR + "/" + LOCAL + "/" + MODELJSON
+	path := m.Root + "/" + TINZENITEDIR + "/" + LOCALDIR + "/" + MODELJSON
 	jsonBinary, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
@@ -300,7 +300,8 @@ func (m *model) partialPopulateMap(path string) (map[string]bool, error) {
 
 /*
 applyCreate applies a create operation to the local model given that the file
-exists.
+exists. NOTE: requires the object to exist in the TEMPDIR named as the object
+indentification.
 */
 func (m *model) applyCreate(path *relativePath, remoteObject *ObjectInfo) error {
 	// ensure no file has been written already
@@ -345,14 +346,16 @@ func (m *model) applyCreate(path *relativePath, remoteObject *ObjectInfo) error 
 	// add obj to local model
 	m.Tracked[path.FullPath()] = true
 	m.Objinfo[path.FullPath()] = *stin
-	m.notify(OpCreate, path)
+	localObj, _ := m.getInfo(path)
+	m.notify(OpCreate, path, localObj)
 	return nil
 }
 
 /*
 applyModify checks for modifications and if valid applies them to the local model.
 Conflicts will result in deletion of the old file and two creations of both versions
-of the conflict.
+of the conflict. NOTE: requires the object to exist in the TEMPDIR named as the
+object indentification.
 */
 func (m *model) applyModify(path *relativePath, remoteObject *ObjectInfo) error {
 	// ensure file has been written
@@ -409,24 +412,34 @@ func (m *model) applyModify(path *relativePath, remoteObject *ObjectInfo) error 
 	}
 	// apply updated
 	m.Objinfo[path.FullPath()] = stin
-	m.notify(OpModify, path)
+	localObj, _ := m.getInfo(path)
+	m.notify(OpModify, path, localObj)
 	return nil
 }
 
 /*
 applyRemove applies a remove operation.
 */
-func (m *model) applyRemove(path *relativePath) error {
-	/*TODO make sure this works for both local AND remote changes!*/
-	// ensure file has been removed
-	if fileExists(path.FullPath()) {
-		return errIllegalFileState
+func (m *model) applyRemove(path *relativePath, remoteObject *ObjectInfo) error {
+	// check if local file has been removed
+	localRemove := !fileExists(path.FullPath())
+	// remote removal
+	if remoteObject != nil {
+		removeExists := fileExists(m.Root + "/" + TINZENITEDIR + "/" + REMOVEDIR + "/" + remoteObject.Identification)
+		if removeExists {
+			log.Println("Creation of remove object overtook deletion: apply deletion and modify remove object.")
+		}
+	} else {
+		if !localRemove {
+			log.Println("File still exists!")
+			return errIllegalFileState
+		}
 	}
 	/*TODO multiple peer logic*/
 	delete(m.Tracked, path.FullPath())
 	delete(m.Objinfo, path.FullPath())
-	/*FIXME: we run into a problem: at this point the file is removed and untracked...*/
-	m.notify(OpRemove, path)
+	/*FIXME: on local remove the remoteObject will be nil – where do I get it if the file already has been deleted? Can I just fill up the important things from stin?*/
+	m.notify(OpRemove, path, remoteObject)
 	return nil
 }
 
@@ -471,7 +484,7 @@ applyFile from temp dir to correct path. Checks and executes the move.
 */
 func (m *model) applyFile(identification string, path string) error {
 	// path to were the modified file sits before being applied
-	temppath := m.Root + "/" + TINZENITEDIR + "/" + TEMP + "/" + identification
+	temppath := m.Root + "/" + TINZENITEDIR + "/" + TEMPDIR + "/" + identification
 	// check that it exists
 	_, err := os.Lstat(temppath)
 	if err != nil {
@@ -484,13 +497,11 @@ func (m *model) applyFile(identification string, path string) error {
 /*
 Notify the channel of the operation for the object at path.
 */
-func (m *model) notify(op Operation, path *relativePath) {
+func (m *model) notify(op Operation, path *relativePath, obj *ObjectInfo) {
 	log.Printf("%s: %s\n", op, path.LastElement())
 	if m.updatechan != nil {
-		obj, err := m.getInfo(path)
-		if err != nil {
-			log.Printf("Error messaging update for %s!\n", path.FullPath())
-			log.Println(err.Error())
+		if obj == nil {
+			log.Println("Failed to notify due to nil obj!")
 			return
 		}
 		m.updatechan <- createUpdateMessage(op, *obj)

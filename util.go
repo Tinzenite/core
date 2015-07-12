@@ -207,7 +207,7 @@ type toxPeerDump struct {
 loadToxDump loads the toxPeerDump file for the local Tinzenite directory.
 */
 func loadToxDump(root string) (*toxPeerDump, error) {
-	data, err := ioutil.ReadFile(root + "/" + TINZENITEDIR + "/" + LOCAL + "/" + SELFPEERJSON)
+	data, err := ioutil.ReadFile(root + "/" + TINZENITEDIR + "/" + LOCALDIR + "/" + SELFPEERJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func (t *toxPeerDump) store(root string) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(root+"/"+TINZENITEDIR+"/"+LOCAL+"/"+SELFPEERJSON, data, FILEPERMISSIONMODE)
+	return ioutil.WriteFile(root+"/"+TINZENITEDIR+"/"+LOCALDIR+"/"+SELFPEERJSON, data, FILEPERMISSIONMODE)
 }
 
 // sortable allows sorting Objectinfos by path.
