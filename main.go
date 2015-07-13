@@ -301,32 +301,32 @@ func (t *Tinzenite) callbackNewConnection(address, message string) {
 CallbackMessage is called when a message is received.
 */
 func (t *Tinzenite) callbackMessage(address, message string) {
-	/*TODO: following is a test of parsing json msgs
 	// find out type of message
 	v := &Message{}
 	err := json.Unmarshal([]byte(message), v)
 	if err == nil {
 		switch msgType := v.Type; msgType {
 		case MsgUpdate:
-			log.Println("Update received!")
-			// Unmarshal to correct msg type:
 			msg := &UpdateMessage{}
 			err := json.Unmarshal([]byte(message), msg)
 			if err != nil {
 				log.Println(err.Error())
 				return
 			}
-			// TODO implement application of msg
-			log.Printf("%+v\n", msg)
+			reqMsg := createRequestMessage(ReObject, msg.Object.Identification)
+			t.channel.Send(address, reqMsg.String())
+			/* TODO implement application of msg as wit manual command but will need to fetch file first...*/
 		case MsgRequest:
 			log.Println("Request received!")
+			t.channel.Send(address, "Sending File (TODO)")
+			/* TODO implement application of msg as wit manual command but will need to fetch file first...*/
 		default:
 			log.Printf("Unknown object sent: %s!\n", msgType)
 		}
+		// If it was JSON, we're done if we can't do anything with it
 		return
 	}
 	// if unmarshal didn't work check for plain commands:
-	*/
 	switch message {
 	case "model":
 		t.channel.Send(address, t.model.String())
@@ -336,6 +336,7 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 	case "create":
 		// CREATE
 		// messy but works: create file correctly, create objs, then move it to the correct temp location
+		// first named create.txt to enable testing of create merge
 		os.Create(t.Path + "/create.txt")
 		ioutil.WriteFile(t.Path+"/create.txt", []byte("bonjour!"), FILEPERMISSIONMODE)
 		obj, _ := createObjectInfo(t.Path, "create.txt", "otheridhere")
@@ -424,6 +425,7 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		t.model.ApplyUpdateMessage(&UpdateMessage{
 			Operation: OpRemove,
 			Object:    *obj})
+		/*TODO implement remove merge conflict!*/
 	default:
 		t.channel.Send(address, "ACK")
 	}
