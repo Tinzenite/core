@@ -315,9 +315,9 @@ func (m *model) applyCreate(path *relativePath, remoteObject *ObjectInfo) error 
 	var err error
 	// if remote create
 	if remoteObject != nil {
-		/*TODO is this a create conflict?*/
+		// create conflict
 		if localCreate {
-			return errIllegalFileState
+			return errConflict
 		}
 		// dirs are made directly, files have to be moved from temp
 		if remoteObject.directory {

@@ -336,13 +336,24 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 	case "create":
 		// CREATE
 		// messy but works: create file correctly, create objs, then move it to the correct temp location
-		os.Create(t.Path + "/test.txt")
-		ioutil.WriteFile(t.Path+"/test.txt", []byte("bonjour!"), FILEPERMISSIONMODE)
-		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
-		os.Rename(t.Path+"/test.txt", t.Path+"/"+TINZENITEDIR+"/"+TEMPDIR+"/"+obj.Identification)
-		t.model.ApplyUpdateMessage(&UpdateMessage{
+		os.Create(t.Path + "/create.txt")
+		ioutil.WriteFile(t.Path+"/create.txt", []byte("bonjour!"), FILEPERMISSIONMODE)
+		obj, _ := createObjectInfo(t.Path, "create.txt", "otheridhere")
+		os.Rename(t.Path+"/create.txt", t.Path+"/"+TINZENITEDIR+"/"+TEMPDIR+"/"+obj.Identification)
+		obj.Name = "test.txt"
+		obj.Path = "test.txt"
+		msg := &UpdateMessage{
 			Operation: OpCreate,
-			Object:    *obj})
+			Object:    *obj}
+		err := t.model.ApplyUpdateMessage(msg)
+		if err == errConflict {
+			err := t.merge(msg)
+			if err != nil {
+				log.Println("Merge: " + err.Error())
+			}
+		} else if err != nil {
+			log.Println(err.Error())
+		}
 	case "modify":
 		// MODIFY
 		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
@@ -397,7 +408,7 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		if err == errConflict {
 			err := t.merge(msg)
 			if err != nil {
-				log.Println("Merge error: " + err.Error())
+				log.Println("Merge: " + err.Error())
 			}
 		} else {
 			log.Println("WHY NO MERGE?!")
@@ -434,6 +445,7 @@ func (t *Tinzenite) merge(msg *UpdateMessage) error {
 	// second: move to new name
 	err = os.Rename(relPath.FullPath(), relPath.FullPath()+".LOCAL")
 	if err != nil {
+		log.Println("Original can not be found!")
 		return err
 	}
 	err = t.model.PartialUpdate(relPath.FullPath() + ".LOCAL")
@@ -459,6 +471,7 @@ func (t *Tinzenite) merge(msg *UpdateMessage) error {
 	tempPath := t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
 	err = os.Rename(tempPath+"/"+oldID, tempPath+"/"+msg.Object.Identification)
 	if err != nil {
+		log.Println("Updating remote object file failed!")
 		return err
 	}
 	// fifth: create remote file
