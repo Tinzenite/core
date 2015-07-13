@@ -368,7 +368,7 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		path := t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
 		orig, _ := t.model.Objinfo[t.Path+"/test.txt"]
 		// write change to file in temp, simulating successful download
-		ioutil.WriteFile(path+"/"+orig.Identification, []byte("hello world"), FILEPERMISSIONMODE)
+		ioutil.WriteFile(path+"/"+orig.Identification, []byte("send modify hello world!"), FILEPERMISSIONMODE)
 	case "testdir":
 		// Test creation and removal of directory
 		makeDirectory(t.Path + "/dirtest")
@@ -382,11 +382,15 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		}
 	case "conflict":
 		// MODIFY that creates merge conflict
+		// path := t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
+		ioutil.WriteFile(t.Path+"/test.txt", []byte("written from conflict test"), FILEPERMISSIONMODE)
+		log.Println("TODO: FINISH APPLYING FILEOP STUFF!")
+		return
+		/*TODO finish rewrite: create objs, move file, try merge*/
 		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
 		obj.Version[t.model.SelfID] = -1
 		obj.Version.Increase("otheridhere") // the remote change
 		log.Println("Sending: " + obj.Version.String())
-		ioutil.WriteFile(t.Path+"/test.txt", []byte("hello world"), FILEPERMISSIONMODE)
 		msg := &UpdateMessage{
 			Operation: OpModify,
 			Object:    *obj}
@@ -443,10 +447,18 @@ func (t *Tinzenite) merge(msg *UpdateMessage) {
 	// fourth: change path and apply remote as create
 	msg.Operation = OpCreate
 	msg.Object.Path = relPath.Subpath() + ".REMOTE"
-	/*TODO what of the id? For now to be sure: new one*/
+	/*TODO what of the id? For now to be sure: new one.*/
+	oldID := msg.Object.Identification
 	msg.Object.Identification, err = newIdentifier()
 	if err != nil {
 		log.Println("Why can new ID fail?")
+		return
+	}
+	// new id --> rename temp file
+	tempPath := t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
+	err = os.Rename(tempPath+"/"+oldID, tempPath+"/"+msg.Object.Identification)
+	if err != nil {
+		log.Println("TEMP rename failed.")
 		return
 	}
 	err = t.model.applyCreate(relPath.Apply(relPath.Subpath()+".REMOTE"), &msg.Object)
