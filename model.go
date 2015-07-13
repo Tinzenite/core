@@ -437,23 +437,32 @@ applyRemove applies a remove operation.
 func (m *model) applyRemove(path *relativePath, remoteObject *ObjectInfo) error {
 	// check if local file has been removed
 	localRemove := !fileExists(path.FullPath())
+	var notifyObj *ObjectInfo
 	// remote removal
 	if remoteObject != nil {
 		removeExists := fileExists(m.Root + "/" + TINZENITEDIR + "/" + REMOVEDIR + "/" + remoteObject.Identification)
 		if removeExists {
 			log.Println("Creation of remove object overtook deletion: apply deletion and modify remove object.")
 		}
+		notifyObj = remoteObject
 	} else {
 		if !localRemove {
 			log.Println("File still exists!")
 			return errIllegalFileState
 		}
+		// build a somewhat adequate object to send (important is only the ID anyway)
+		stin := m.Objinfo[path.FullPath()]
+		notifyObj = &ObjectInfo{
+			Identification: stin.Identification,
+			Name:           path.LastElement(),
+			Content:        stin.Content,
+			directory:      stin.Directory}
 	}
 	/*TODO multiple peer logic*/
 	delete(m.Tracked, path.FullPath())
 	delete(m.Objinfo, path.FullPath())
 	/*FIXME: on local remove the remoteObject will be nil – where do I get it if the file already has been deleted? Can I just fill up the important things from stin?*/
-	m.notify(OpRemove, path, remoteObject)
+	m.notify(OpRemove, path, notifyObj)
 	return nil
 }
 
