@@ -445,12 +445,12 @@ func (t *Tinzenite) merge(msg *UpdateMessage) error {
 		return err
 	}
 	// second: move to new name
-	err = os.Rename(relPath.FullPath(), relPath.FullPath()+".LOCAL")
+	err = os.Rename(relPath.FullPath(), relPath.FullPath()+LOCAL)
 	if err != nil {
 		log.Println("Original can not be found!")
 		return err
 	}
-	err = t.model.PartialUpdate(relPath.FullPath() + ".LOCAL")
+	err = t.model.PartialUpdate(relPath.FullPath() + LOCAL)
 	if err != nil {
 		return err
 	}
@@ -461,8 +461,8 @@ func (t *Tinzenite) merge(msg *UpdateMessage) error {
 	}
 	// fourth: change path and apply remote as create
 	msg.Operation = OpCreate
-	msg.Object.Path = relPath.Subpath() + ".REMOTE"
-	msg.Object.Name = relPath.LastElement() + ".REMOTE"
+	msg.Object.Path = relPath.Subpath() + REMOTE
+	msg.Object.Name = relPath.LastElement() + REMOTE
 	/*TODO what of the id? For now to be sure: new one.*/
 	oldID := msg.Object.Identification
 	msg.Object.Identification, err = newIdentifier()
@@ -477,7 +477,7 @@ func (t *Tinzenite) merge(msg *UpdateMessage) error {
 		return err
 	}
 	// fifth: create remote file
-	err = t.model.applyCreate(relPath.Apply(relPath.FullPath()+".REMOTE"), &msg.Object)
+	err = t.model.applyCreate(relPath.Apply(relPath.FullPath()+REMOTE), &msg.Object)
 	if err != nil {
 		return err
 	}

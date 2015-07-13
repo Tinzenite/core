@@ -55,5 +55,16 @@ const (
 	SELFPEERJSON  = "self" + ENDING
 )
 
+/*
+Naming of conflicting files.
+
+TODO: this should be improved because it can quickly cause multi merge
+problems... Consider using name of peers and version numbers.
+*/
+const (
+	LOCAL  = ".LOCAL"
+	REMOTE = ".REMOTE"
+)
+
 // .tinignore content for .tinzenite directory
 const TINDIRIGNORE = "# DO NOT MODIFY!\n/" + LOCALDIR + "\n/" + TEMPDIR
