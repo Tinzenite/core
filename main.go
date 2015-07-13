@@ -301,6 +301,7 @@ func (t *Tinzenite) callbackNewConnection(address, message string) {
 CallbackMessage is called when a message is received.
 */
 func (t *Tinzenite) callbackMessage(address, message string) {
+	/*TODO: following is a test of parsing json msgs
 	// find out type of message
 	v := &Message{}
 	err := json.Unmarshal([]byte(message), v)
@@ -315,7 +316,7 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-			/*TODO implement application of msg*/
+			// TODO implement application of msg
 			log.Printf("%+v\n", msg)
 		case MsgRequest:
 			log.Println("Request received!")
@@ -325,6 +326,7 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		return
 	}
 	// if unmarshal didn't work check for plain commands:
+	*/
 	switch message {
 	case "model":
 		t.channel.Send(address, t.model.String())
@@ -385,9 +387,15 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		obj.Version.Increase("otheridhere") // the remote change
 		log.Println("Sending: " + obj.Version.String())
 		ioutil.WriteFile(t.Path+"/test.txt", []byte("hello world"), FILEPERMISSIONMODE)
-		t.model.ApplyUpdateMessage(&UpdateMessage{
+		msg := &UpdateMessage{
 			Operation: OpModify,
-			Object:    *obj})
+			Object:    *obj}
+		err := t.model.ApplyUpdateMessage(msg)
+		if err == errConflict {
+			t.merge(msg)
+		} else {
+			log.Println("WHY NO MERGE?!")
+		}
 	case "delete":
 		// DELETE
 		obj, err := createObjectInfo(t.Path, "test.txt", "otheridhere")
@@ -401,6 +409,50 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 			Object:    *obj})
 	default:
 		t.channel.Send(address, "ACK")
+	}
+}
+
+/*
+Merge an update message to the local model.
+
+TODO: with move implemented one of the merged file copies can be kept and simply
+renamed, also solving the ID problem. Look into this!
+*/
+func (t *Tinzenite) merge(msg *UpdateMessage) {
+	log.Println("Merging stuff here...")
+	/*TODO call applicable model functions to handle merges*/
+	relPath := createPath(t.Path, msg.Object.Path)
+	// first: apply local changes to model (this is why writing PartialUpdate was no waste of time, isn't this cool?! :D)
+	err := t.model.PartialUpdate(relPath.FullPath())
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+	// second: move to new name
+	err = os.Rename(relPath.FullPath(), relPath.FullPath()+".LOCAL")
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+	// third: remove original
+	err = t.model.applyRemove(relPath, nil)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+	// fourth: change path and apply remote as create
+	msg.Operation = OpCreate
+	msg.Object.Path = relPath.Subpath() + ".REMOTE"
+	/*TODO what of the id? For now to be sure: new one*/
+	msg.Object.Identification, err = newIdentifier()
+	if err != nil {
+		log.Println("Why can new ID fail?")
+		return
+	}
+	err = t.model.applyCreate(relPath.Apply(relPath.Subpath()+".REMOTE"), &msg.Object)
+	if err != nil {
+		log.Println(err.Error())
+		return
 	}
 }
 
