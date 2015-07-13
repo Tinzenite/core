@@ -319,7 +319,7 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		case MsgRequest:
 			log.Println("Request received!")
 			t.channel.Send(address, "Sending File (TODO)")
-			/* TODO implement application of msg as wit manual command but will need to fetch file first...*/
+			/* TODO implement sending of file*/
 		default:
 			log.Printf("Unknown object sent: %s!\n", msgType)
 		}
