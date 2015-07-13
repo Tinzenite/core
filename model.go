@@ -300,8 +300,8 @@ func (m *model) partialPopulateMap(path string) (map[string]bool, error) {
 
 /*
 applyCreate applies a create operation to the local model given that the file
-exists. NOTE: requires the object to exist in the TEMPDIR named as the object
-indentification.
+exists. NOTE: In the case of a file, requires the object to exist in the TEMPDIR
+named as the object indentification.
 */
 func (m *model) applyCreate(path *relativePath, remoteObject *ObjectInfo) error {
 	// ensure no file has been written already
@@ -321,10 +321,18 @@ func (m *model) applyCreate(path *relativePath, remoteObject *ObjectInfo) error 
 		if localCreate {
 			return errIllegalFileState
 		}
-		// apply file op
-		err := m.applyFile(remoteObject.Identification, path.FullPath())
-		if err != nil {
-			return err
+		// dirs are made directly, files have to be moved from temp
+		if remoteObject.directory {
+			err := makeDirectory(path.FullPath())
+			if err != nil {
+				return err
+			}
+		} else {
+			// apply file op
+			err := m.applyFile(remoteObject.Identification, path.FullPath())
+			if err != nil {
+				return err
+			}
 		}
 		// build staticinfo
 		stin, err = createStaticInfo(path.FullPath(), m.SelfID)
@@ -354,8 +362,8 @@ func (m *model) applyCreate(path *relativePath, remoteObject *ObjectInfo) error 
 /*
 applyModify checks for modifications and if valid applies them to the local model.
 Conflicts will result in deletion of the old file and two creations of both versions
-of the conflict. NOTE: requires the object to exist in the TEMPDIR named as the
-object indentification.
+of the conflict. NOTE: In the case of a file, requires the object to exist in the
+TEMPDIR named as the object indentification.
 */
 func (m *model) applyModify(path *relativePath, remoteObject *ObjectInfo) error {
 	// ensure file has been written
@@ -392,10 +400,16 @@ func (m *model) applyModify(path *relativePath, remoteObject *ObjectInfo) error 
 		}
 		// apply version update
 		stin.Version = ver
-		// apply the file op
-		err := m.applyFile(stin.Identification, path.FullPath())
-		if err != nil {
-			return err
+		// if file apply file diff
+		if !remoteObject.directory {
+			// apply the file op
+			err := m.applyFile(stin.Identification, path.FullPath())
+			if err != nil {
+				return err
+			}
+		} else {
+			/*TODO can this happen for directories? Only once move is implemented, right?*/
+			log.Println("WARNING: modify not implemented for directories!")
 		}
 	} else {
 		if !localModified {

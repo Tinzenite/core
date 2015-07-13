@@ -367,6 +367,17 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		orig, _ := t.model.Objinfo[t.Path+"/test.txt"]
 		// write change to file in temp, simulating successful download
 		ioutil.WriteFile(path+"/"+orig.Identification, []byte("hello world"), FILEPERMISSIONMODE)
+	case "testdir":
+		// Test creation and removal of directory
+		makeDirectory(t.Path + "/dirtest")
+		obj, _ := createObjectInfo(t.Path, "dirtest", "dirtestpeer")
+		os.Remove(t.Path + "/dirtest")
+		err := t.model.ApplyUpdateMessage(&UpdateMessage{
+			Operation: OpCreate,
+			Object:    *obj})
+		if err != nil {
+			log.Println(err.Error())
+		}
 	case "conflict":
 		// MODIFY that creates merge conflict
 		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
