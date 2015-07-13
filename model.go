@@ -123,7 +123,6 @@ be called after the file operation has been applied but before the next update!
 */
 /*TODO catch shadow files*/
 func (m *model) ApplyUpdateMessage(msg *UpdateMessage) error {
-	// NOTE: NO YOU CANNOT USE m.apply() FOR THIS!
 	path := createPath(m.Root, msg.Object.Path)
 	var err error
 	switch msg.Operation {
@@ -138,7 +137,6 @@ func (m *model) ApplyUpdateMessage(msg *UpdateMessage) error {
 		return ErrUnsupported
 	}
 	if err != nil {
-		log.Println("Error on external apply update message!")
 		return err
 	}
 	// store updates to disk
@@ -309,7 +307,7 @@ func (m *model) applyCreate(path *relativePath, remoteObject *ObjectInfo) error 
 	// sanity check if the object already exists locally
 	_, ok := m.Tracked[path.FullPath()]
 	if ok {
-		log.Println("Object already exists locally! Can not apply create!")
+		log.Printf("Object at <%s> exists locally! Can not apply create!\n", path.FullPath())
 		return errConflict
 	}
 	// NOTE: we don't explicitely check m.Objinfo because we'll just overwrite it if already exists

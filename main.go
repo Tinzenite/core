@@ -382,21 +382,23 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 		}
 	case "conflict":
 		// MODIFY that creates merge conflict
-		// path := t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
-		ioutil.WriteFile(t.Path+"/test.txt", []byte("written from conflict test"), FILEPERMISSIONMODE)
-		log.Println("TODO: FINISH APPLYING FILEOP STUFF!")
-		return
-		/*TODO finish rewrite: create objs, move file, try merge*/
-		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
+		path := t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
+		ioutil.WriteFile(t.Path+"/merge.txt", []byte("written from conflict test"), FILEPERMISSIONMODE)
+		obj, _ := createObjectInfo(t.Path, "merge.txt", "otheridhere")
+		os.Rename(t.Path+"/merge.txt", path+"/"+obj.Identification)
+		obj.Path = "test.txt"
+		obj.Name = "test.txt"
 		obj.Version[t.model.SelfID] = -1
 		obj.Version.Increase("otheridhere") // the remote change
-		log.Println("Sending: " + obj.Version.String())
 		msg := &UpdateMessage{
 			Operation: OpModify,
 			Object:    *obj}
 		err := t.model.ApplyUpdateMessage(msg)
 		if err == errConflict {
-			t.merge(msg)
+			err := t.merge(msg)
+			if err != nil {
+				log.Println("Merge error: " + err.Error())
+			}
 		} else {
 			log.Println("WHY NO MERGE?!")
 		}
@@ -422,50 +424,49 @@ Merge an update message to the local model.
 TODO: with move implemented one of the merged file copies can be kept and simply
 renamed, also solving the ID problem. Look into this!
 */
-func (t *Tinzenite) merge(msg *UpdateMessage) {
-	log.Println("Merging stuff here...")
-	/*TODO call applicable model functions to handle merges*/
+func (t *Tinzenite) merge(msg *UpdateMessage) error {
 	relPath := createPath(t.Path, msg.Object.Path)
 	// first: apply local changes to model (this is why writing PartialUpdate was no waste of time, isn't this cool?! :D)
 	err := t.model.PartialUpdate(relPath.FullPath())
 	if err != nil {
-		log.Println(err.Error())
-		return
+		return err
 	}
 	// second: move to new name
 	err = os.Rename(relPath.FullPath(), relPath.FullPath()+".LOCAL")
 	if err != nil {
-		log.Println(err.Error())
-		return
+		return err
+	}
+	err = t.model.PartialUpdate(relPath.FullPath() + ".LOCAL")
+	if err != nil {
+		return err
 	}
 	// third: remove original
 	err = t.model.applyRemove(relPath, nil)
 	if err != nil {
-		log.Println(err.Error())
-		return
+		return err
 	}
 	// fourth: change path and apply remote as create
 	msg.Operation = OpCreate
 	msg.Object.Path = relPath.Subpath() + ".REMOTE"
+	msg.Object.Name = relPath.LastElement() + ".REMOTE"
 	/*TODO what of the id? For now to be sure: new one.*/
 	oldID := msg.Object.Identification
 	msg.Object.Identification, err = newIdentifier()
 	if err != nil {
-		log.Println("Why can new ID fail?")
-		return
+		return err
 	}
 	// new id --> rename temp file
 	tempPath := t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
 	err = os.Rename(tempPath+"/"+oldID, tempPath+"/"+msg.Object.Identification)
 	if err != nil {
-		log.Println("TEMP rename failed.")
-		return
+		return err
 	}
-	err = t.model.applyCreate(relPath.Apply(relPath.Subpath()+".REMOTE"), &msg.Object)
+	// fifth: create remote file
+	err = t.model.applyCreate(relPath.Apply(relPath.FullPath()+".REMOTE"), &msg.Object)
 	if err != nil {
-		log.Println(err.Error())
-		return
+		return err
 	}
+	return nil
 }
 
 /*
