@@ -452,16 +452,17 @@ func (m *model) applyRemove(path *relativePath, remoteObject *ObjectInfo) error 
 		}
 		// build a somewhat adequate object to send (important is only the ID anyway)
 		stin := m.Objinfo[path.FullPath()]
+		// just fill it with the info we have at hand
 		notifyObj = &ObjectInfo{
 			Identification: stin.Identification,
 			Name:           path.LastElement(),
 			Content:        stin.Content,
+			Version:        stin.Version,
 			directory:      stin.Directory}
 	}
 	/*TODO multiple peer logic*/
 	delete(m.Tracked, path.FullPath())
 	delete(m.Objinfo, path.FullPath())
-	/*FIXME: on local remove the remoteObject will be nil – where do I get it if the file already has been deleted? Can I just fill up the important things from stin?*/
 	m.notify(OpRemove, path, notifyObj)
 	return nil
 }
