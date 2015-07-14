@@ -117,6 +117,16 @@ func (m *model) PartialUpdate(scope string) error {
 	return m.Store()
 }
 
+func (m *model) SyncModel(root *ObjectInfo) {
+	/*
+		TODO: how to implement this.
+		Maybe: make a check method that simply returns whether Tinzenite needs to
+		fetch the file? Can then use ApplyUpdateMessage to trigger actual update...
+
+		Will also need to work on how TINZENITE fetches the files (from multiple etc.)
+	*/
+}
+
 /*
 ApplyUpdateMessage takes an update message and applies it to the model. Should
 be called after the file operation has been applied but before the next update!
