@@ -8,6 +8,8 @@ import (
 	"os/user"
 	"strings"
 	"sync"
+
+	"github.com/tinzenite/channel"
 )
 
 /*
@@ -17,7 +19,8 @@ type Tinzenite struct {
 	Path        string
 	auth        *Authentication
 	selfpeer    *Peer
-	channel     *Channel
+	channel     *channel.Channel
+	cInterface  *chaninterface
 	allPeers    []*Peer
 	model       *model
 	sendChannel chan UpdateMessage
@@ -42,8 +45,10 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 	tinzenite := &Tinzenite{
 		Path: dirpath,
 		auth: auth}
+	// prepare chaninterface
+	tinzenite.cInterface = &chaninterface{t: tinzenite}
 	// build channel
-	channel, err := CreateChannel(peername, nil, tinzenite)
+	channel, err := channel.Create(peername, nil, tinzenite.cInterface)
 	if err != nil {
 		return nil, err
 	}
@@ -125,8 +130,10 @@ func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
 		return nil, err
 	}
 	t.selfpeer = selfToxDump.SelfPeer
+	// prepare chaninterface
+	t.cInterface = &chaninterface{t: t}
 	// prepare channel
-	channel, err := CreateChannel(t.selfpeer.Name, selfToxDump.ToxData, t)
+	channel, err := channel.Create(t.selfpeer.Name, selfToxDump.ToxData, t.cInterface)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +258,11 @@ func (t *Tinzenite) Store() error {
 Connect this tinzenite to another peer, beginning the bootstrap process.
 */
 func (t *Tinzenite) Connect(address string) error {
-	return t.channel.RequestConnection(address, t.selfpeer)
+	msg, err := json.Marshal(t.selfpeer)
+	if err != nil {
+		return err
+	}
+	return t.channel.RequestConnection(address, string(msg))
 }
 
 /*
@@ -273,180 +284,6 @@ func (t *Tinzenite) send(msg string) {
 		// sync
 		/*TODO must store init state in allPeers too, also in future encryption*/
 	}
-}
-
-/*
-CallbackNewConnection is called when a new connection request comes in.
-*/
-func (t *Tinzenite) callbackNewConnection(address, message string) {
-	log.Printf("New connection from <%s> with message <%s>\n", address, message)
-	err := t.channel.AcceptConnection(address)
-	if err != nil {
-		log.Println(err.Error())
-		return
-	}
-	/*TODO actually this should be read from disk once the peer has synced... oO
-	Correction: read from message other peer info */
-	newID, _ := newIdentifier()
-	t.allPeers = append(t.allPeers, &Peer{
-		Identification: newID,   // must be read from message
-		Name:           message, // must be read from message
-		Address:        address,
-		Protocol:       CmTox})
-	// actually we just want to get type and confidence from the user here, and if everything
-	// is okay we accept the connection --> then what? need to bootstrap him...
-}
-
-/*
-CallbackMessage is called when a message is received.
-*/
-func (t *Tinzenite) callbackMessage(address, message string) {
-	// find out type of message
-	v := &Message{}
-	err := json.Unmarshal([]byte(message), v)
-	if err == nil {
-		switch msgType := v.Type; msgType {
-		case MsgUpdate:
-			msg := &UpdateMessage{}
-			err := json.Unmarshal([]byte(message), msg)
-			if err != nil {
-				log.Println(err.Error())
-				return
-			}
-			reqMsg := createRequestMessage(ReObject, msg.Object.Identification)
-			t.channel.Send(address, reqMsg.String())
-			/* TODO implement application of msg as wit manual command but will need to fetch file first...*/
-		case MsgRequest:
-			log.Println("Request received!")
-			t.channel.Send(address, "Sending File (TODO)")
-			/* TODO implement sending of file*/
-		default:
-			log.Printf("Unknown object sent: %s!\n", msgType)
-		}
-		// If it was JSON, we're done if we can't do anything with it
-		return
-	}
-	// if unmarshal didn't work check for plain commands:
-	switch message {
-	case "model":
-		t.channel.Send(address, t.model.String())
-	case "auth":
-		authbin, _ := json.Marshal(t.auth)
-		t.channel.Send(address, string(authbin))
-	case "create":
-		// CREATE
-		// messy but works: create file correctly, create objs, then move it to the correct temp location
-		// first named create.txt to enable testing of create merge
-		os.Create(t.Path + "/create.txt")
-		ioutil.WriteFile(t.Path+"/create.txt", []byte("bonjour!"), FILEPERMISSIONMODE)
-		obj, _ := createObjectInfo(t.Path, "create.txt", "otheridhere")
-		os.Rename(t.Path+"/create.txt", t.Path+"/"+TINZENITEDIR+"/"+TEMPDIR+"/"+obj.Identification)
-		obj.Name = "test.txt"
-		obj.Path = "test.txt"
-		msg := &UpdateMessage{
-			Operation: OpCreate,
-			Object:    *obj}
-		err := t.model.ApplyUpdateMessage(msg)
-		if err == errConflict {
-			err := t.merge(msg)
-			if err != nil {
-				log.Println("Merge: " + err.Error())
-			}
-		} else if err != nil {
-			log.Println(err.Error())
-		}
-	case "modify":
-		// MODIFY
-		obj, _ := createObjectInfo(t.Path, "test.txt", "otheridhere")
-		orig, _ := t.model.Objinfo[t.Path+"/test.txt"]
-		// id must be same
-		obj.Identification = orig.Identification
-		// version apply so that we can always "update" it
-		obj.Version[t.model.SelfID] = orig.Version[t.model.SelfID]
-		// if orig already has, increase further
-		value, ok := orig.Version["otheridhere"]
-		if ok {
-			obj.Version["otheridhere"] = value
-		}
-		// add one new version
-		obj.Version.Increase("otheridhere")
-		err := t.model.ApplyUpdateMessage(&UpdateMessage{
-			Operation: OpModify,
-			Object:    *obj})
-		if err != nil {
-			log.Println(err.Error())
-		}
-	case "sendmodify":
-		path := t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
-		orig, _ := t.model.Objinfo[t.Path+"/test.txt"]
-		// write change to file in temp, simulating successful download
-		ioutil.WriteFile(path+"/"+orig.Identification, []byte("send modify hello world!"), FILEPERMISSIONMODE)
-	case "testdir":
-		// Test creation and removal of directory
-		makeDirectory(t.Path + "/dirtest")
-		obj, _ := createObjectInfo(t.Path, "dirtest", "dirtestpeer")
-		os.Remove(t.Path + "/dirtest")
-		err := t.model.ApplyUpdateMessage(&UpdateMessage{
-			Operation: OpCreate,
-			Object:    *obj})
-		if err != nil {
-			log.Println(err.Error())
-		}
-	case "conflict":
-		// MODIFY that creates merge conflict
-		path := t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
-		ioutil.WriteFile(t.Path+"/merge.txt", []byte("written from conflict test"), FILEPERMISSIONMODE)
-		obj, _ := createObjectInfo(t.Path, "merge.txt", "otheridhere")
-		os.Rename(t.Path+"/merge.txt", path+"/"+obj.Identification)
-		obj.Path = "test.txt"
-		obj.Name = "test.txt"
-		obj.Version[t.model.SelfID] = -1
-		obj.Version.Increase("otheridhere") // the remote change
-		msg := &UpdateMessage{
-			Operation: OpModify,
-			Object:    *obj}
-		err := t.model.ApplyUpdateMessage(msg)
-		if err == errConflict {
-			err := t.merge(msg)
-			if err != nil {
-				log.Println("Merge: " + err.Error())
-			}
-		} else {
-			log.Println("WHY NO MERGE?!")
-		}
-	case "delete":
-		// DELETE
-		obj, err := createObjectInfo(t.Path, "test.txt", "otheridhere")
-		if err != nil {
-			log.Println(err.Error())
-			return
-		}
-		os.Remove(t.Path + "/test.txt")
-		t.model.ApplyUpdateMessage(&UpdateMessage{
-			Operation: OpRemove,
-			Object:    *obj})
-		/*TODO implement remove merge conflict!*/
-	default:
-		t.channel.Send(address, "ACK")
-	}
-}
-
-/*
-TODO finish implementing
-*/
-func (t *Tinzenite) callbackAllowFile(address, identification string) (bool, string) {
-	// for now accept every transfer
-	log.Printf("Allowing file <%s> from %s\n", identification, address)
-	return true, t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR + "/" + identification
-}
-
-/*
-callbackFileReceived is for channel. It is called once the file has been successfully
-received, thus initiates the actual local merging into the model.
-*/
-func (t *Tinzenite) callbackFileReceived(identification string) {
-	log.Printf("File %s is now ready for model update!\n", identification)
-	/*TODO check request if file is delta / must be decrypted before applying to model*/
 }
 
 /*
