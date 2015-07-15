@@ -6,23 +6,23 @@ import "errors"
 Errors of Tinzenite.
 */
 var (
-	ErrUnsupported      = errors.New("Feature currently unsupported!")
-	ErrIsTinzenite      = errors.New("Already a Tinzenite directory!")
-	ErrNotTinzenite     = errors.New("Path is not valid Tinzenite directory!")
-	ErrNoTinIgnore      = errors.New("No .tinignore file found!")
-	ErrUntracked        = errors.New("Object is not tracked in the model!")
-	ErrNilInternalState = errors.New("Internal state has illegal NIL values!")
+	ErrUnsupported      = errors.New("feature currently unsupported")
+	ErrIsTinzenite      = errors.New("already a Tinzenite directory")
+	ErrNotTinzenite     = errors.New("path is not valid Tinzenite directory")
+	ErrNoTinIgnore      = errors.New("no .tinignore file found")
+	ErrUntracked        = errors.New("object is not tracked in the model")
+	ErrNilInternalState = errors.New("internal state has illegal NIL values")
 )
 
 /*
 Internal errors of Tinzenite.
 */
 var (
-	errWrongObject       = errors.New("Wrong ObjectInfo!")
-	errConflict          = errors.New("Conflict, can not apply!")
-	errIllegalFileState  = errors.New("Illegal file state detected!")
-	errModelInconsitent  = errors.New("Model tracked and staticinfo are inconsistent!")
-	errMissingUpdateFile = errors.New("File for update missing from temp!")
+	errWrongObject       = errors.New("wrong ObjectInfo")
+	errConflict          = errors.New("conflict, can not apply")
+	errIllegalFileState  = errors.New("illegal file state detected")
+	errModelInconsitent  = errors.New("model tracked and staticinfo are inconsistent")
+	errMissingUpdateFile = errors.New("file for update missing from temp")
 )
 
 // constant value here
