@@ -35,11 +35,11 @@ type Callbacks interface {
 	callbackNewConnection(address, message string)
 	/*callbackMessage is called on an incomming message.*/
 	callbackMessage(address, message string)
-	/*callbackAllowFile is called when a file transfer is wished.*/
-	callbackAllowFile(address, identification string) bool
-	/*callbackFilePath is given the file name and should return the full path to where the file should be written.*/
-	callbackFilePath(identification string) string
-	/*callbackFileReceived is called once the file has been successfully received completely.*/
+	/*callbackAllowFile is called when a file transfer is wished. Returns the
+	permission as bool and the path where to write the file.*/
+	callbackAllowFile(address, identification string) (bool, string)
+	/*callbackFileReceived is called once the file has been successfully
+	received completely.*/
 	callbackFileReceived(identification string)
 }
 
@@ -318,14 +318,14 @@ func (channel *Channel) onFileRecv(t *gotox.Tox, friendnumber uint32, filenumber
 		address = illegalAddress
 	}
 	// use callback to check whether to accept from Tinzenite
-	if !channel.callbacks.callbackAllowFile(address, filename) {
+	accept, path := channel.callbacks.callbackAllowFile(address, filename)
+	if !accept {
 		return
 	}
 	// Accept any file send request
 	t.FileControl(friendnumber, true, filenumber, gotox.TOX_FILE_CONTROL_RESUME, nil)
 	// create file at correct location
 	/*TODO how are pause & resume handled?*/
-	path := channel.callbacks.callbackFilePath(filename)
 	f, _ := os.Create(path)
 	// Append f to the map[uint8]*os.File
 	channel.transfers[filenumber] = f

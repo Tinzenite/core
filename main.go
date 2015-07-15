@@ -434,18 +434,10 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 /*
 TODO finish implementing
 */
-func (t *Tinzenite) callbackAllowFile(address, identification string) bool {
+func (t *Tinzenite) callbackAllowFile(address, identification string) (bool, string) {
 	// for now accept every transfer
 	log.Printf("Allowing file <%s> from %s\n", identification, address)
-	return true
-}
-
-/*
-callbackFilePath is for channel. It should return the path where the file is to
-be written.
-*/
-func (t *Tinzenite) callbackFilePath(identification string) string {
-	return t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR + "/" + identification
+	return true, t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR + "/" + identification
 }
 
 /*
