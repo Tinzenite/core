@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -20,18 +21,22 @@ instance.
 TODO all callbacks will block, need to avoid that especially when user interaction is required
 */
 type Channel struct {
-	tox       *gotox.Tox
-	callbacks Callbacks
-	wg        sync.WaitGroup
-	stop      chan bool
+	tox                *gotox.Tox
+	callbacks          Callbacks
+	wg                 sync.WaitGroup
+	stop               chan bool
+	transfers          map[uint32]*os.File
+	transfersFilesizes map[uint32]uint64
 }
 
 // Callbacks for external wrapped access.
 type Callbacks interface {
-	/*CallbackNewConnection is called on a Tox friend request.*/
+	/*callbackNewConnection is called on a Tox friend request.*/
 	callbackNewConnection(address, message string)
-	/*CallbackMessage is called on an incomming message.*/
+	/*callbackMessage is called on an incomming message.*/
 	callbackMessage(address, message string)
+	/*callbackAllowFile is called when a file transfer is wished.*/
+	callbackAllowFile(address, identification string) bool
 }
 
 /*
@@ -46,6 +51,10 @@ func CreateChannel(name string, toxdata []byte, callbacks Callbacks) (*Channel, 
 	var channel = &Channel{}
 	var options *gotox.Options
 	var err error
+
+	// prepare for file transfers
+	channel.transfers = make(map[uint32]*os.File)
+	channel.transfersFilesizes = make(map[uint32]uint64)
 
 	// this decides whether we are initiating a new connection or using an existing one
 	if toxdata == nil {
@@ -73,6 +82,10 @@ func CreateChannel(name string, toxdata []byte, callbacks Callbacks) (*Channel, 
 	// Register our callbacks
 	channel.tox.CallbackFriendRequest(channel.onFriendRequest)
 	channel.tox.CallbackFriendMessage(channel.onFriendMessage)
+	channel.tox.CallbackFileRecvControl(channel.onFileRecvControl)
+	channel.tox.CallbackFileRecv(channel.onFileRecv)
+	channel.tox.CallbackFileRecvChunk(channel.onFileRecvChunk)
+	// some things must only be done if first start
 	if init {
 		// Bootstrap
 		toxNode, err := toxdynboot.FetchFirstAlive(200 * time.Millisecond)
@@ -255,14 +268,83 @@ func (channel *Channel) onFriendMessage(t *gotox.Tox, friendnumber uint32, messa
 	/*TODO make sensible*/
 	if messagetype == gotox.TOX_MESSAGE_TYPE_NORMAL {
 		if channel.callbacks != nil {
-			publicKey, err := channel.tox.FriendGetPublickey(friendnumber)
+			address, err := channel.addressOf(friendnumber)
 			if err != nil {
-				channel.callbacks.callbackMessage("ADDRESS_ERROR", message)
-			} else {
-				channel.callbacks.callbackMessage(hex.EncodeToString(publicKey), message)
+				log.Println(err.Error())
+				address = illegalAddress
 			}
+			channel.callbacks.callbackMessage(address, message)
 		} else {
 			log.Println("Error: callbacks are nil!")
 		}
 	}
+}
+
+/*
+TODO implement and comment
+*/
+func (channel *Channel) onFileRecvControl(t *gotox.Tox, friendnumber uint32, filenumber uint32, fileControl gotox.ToxFileControl) {
+	log.Printf("File control: %#+v\n", fileControl)
+	if fileControl == gotox.TOX_FILE_CONTROL_CANCEL {
+		log.Println("Transfer was canceled!")
+		// free resources
+		delete(channel.transfers, filenumber)
+		delete(channel.transfersFilesizes, filenumber)
+	}
+}
+
+/*
+TODO implement and comment
+*/
+func (channel *Channel) onFileRecv(t *gotox.Tox, friendnumber uint32, filenumber uint32, kind gotox.ToxFileKind, filesize uint64, filename string) {
+	address, err := channel.addressOf(friendnumber)
+	if err != nil {
+		log.Println(err.Error())
+		address = illegalAddress
+	}
+	// use callback to check whether to accept from Tinzenite
+	if !channel.callbacks.callbackAllowFile(address, filename) {
+		return
+	}
+	// Accept any file send request
+	t.FileControl(friendnumber, true, filenumber, gotox.TOX_FILE_CONTROL_RESUME, nil)
+	// Init *File handle
+	/*TODO name correctly and create at correct location*/
+	f, _ := os.Create("example_" + filename)
+	// Append f to the map[uint8]*os.File
+	channel.transfers[filenumber] = f
+	channel.transfersFilesizes[filenumber] = filesize
+}
+
+/*
+TODO implement and comment
+*/
+func (channel *Channel) onFileRecvChunk(t *gotox.Tox, friendnumber uint32, filenumber uint32, position uint64, data []byte) {
+	// Write data to the hopefully valid *File handle
+	if f, exists := channel.transfers[filenumber]; exists {
+		f.WriteAt(data, (int64)(position))
+	} else {
+		log.Println("File doesn't seem to exist!")
+		return
+	}
+
+	// Finished receiving file
+	if position == channel.transfersFilesizes[filenumber] {
+		f := channel.transfers[filenumber]
+		f.Sync()
+		f.Close()
+		delete(channel.transfers, filenumber)
+		delete(channel.transfersFilesizes, filenumber)
+	}
+}
+
+/*
+addressOf given friend number.
+*/
+func (channel *Channel) addressOf(friendnumber uint32) (string, error) {
+	publicKey, err := channel.tox.FriendGetPublickey(friendnumber)
+	if err != nil {
+		return "", errLostAddress
+	}
+	return hex.EncodeToString(publicKey), nil
 }

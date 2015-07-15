@@ -23,6 +23,7 @@ var (
 	errIllegalFileState  = errors.New("Illegal file state detected!")
 	errModelInconsitent  = errors.New("Model tracked and staticinfo are inconsistent!")
 	errMissingUpdateFile = errors.New("File for update missing from temp!")
+	errLostAddress       = errors.New("Could not determine address!")
 )
 
 // constant value here
@@ -37,6 +38,11 @@ const (
 	FILEPERMISSIONMODE = 0777
 	/*CHUNKSIZE for hashing and encryption.*/
 	CHUNKSIZE = 8 * 1024
+)
+
+/*Default string values*/
+const (
+	illegalAddress = "unknown_address"
 )
 
 // Path constants here

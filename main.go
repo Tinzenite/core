@@ -432,6 +432,15 @@ func (t *Tinzenite) callbackMessage(address, message string) {
 }
 
 /*
+TODO finish implementing
+*/
+func (t *Tinzenite) callbackAllowFile(address, identification string) bool {
+	// for now accept every transfer
+	log.Printf("Allowing file <%s> from %s\n", identification, address)
+	return true
+}
+
+/*
 Merge an update message to the local model.
 
 TODO: with move implemented one of the merged file copies can be kept and simply
