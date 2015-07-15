@@ -37,6 +37,10 @@ type Callbacks interface {
 	callbackMessage(address, message string)
 	/*callbackAllowFile is called when a file transfer is wished.*/
 	callbackAllowFile(address, identification string) bool
+	/*callbackFilePath is given the file name and should return the full path to where the file should be written.*/
+	callbackFilePath(identification string) string
+	/*callbackFileReceived is called once the file has been successfully received completely.*/
+	callbackFileReceived(identification string)
 }
 
 /*
@@ -251,6 +255,17 @@ func (channel *Channel) run() {
 }
 
 /*
+addressOf given friend number.
+*/
+func (channel *Channel) addressOf(friendnumber uint32) (string, error) {
+	publicKey, err := channel.tox.FriendGetPublickey(friendnumber)
+	if err != nil {
+		return "", errLostAddress
+	}
+	return hex.EncodeToString(publicKey), nil
+}
+
+/*
 onFriendRequest calls the appropriate callback, wrapping it sanely for our purposes.
 */
 func (channel *Channel) onFriendRequest(t *gotox.Tox, publicKey []byte, message string) {
@@ -308,9 +323,10 @@ func (channel *Channel) onFileRecv(t *gotox.Tox, friendnumber uint32, filenumber
 	}
 	// Accept any file send request
 	t.FileControl(friendnumber, true, filenumber, gotox.TOX_FILE_CONTROL_RESUME, nil)
-	// Init *File handle
-	/*TODO name correctly and create at correct location*/
-	f, _ := os.Create("example_" + filename)
+	// create file at correct location
+	/*TODO how are pause & resume handled?*/
+	path := channel.callbacks.callbackFilePath(filename)
+	f, _ := os.Create(path)
 	// Append f to the map[uint8]*os.File
 	channel.transfers[filenumber] = f
 	channel.transfersFilesizes[filenumber] = filesize
@@ -327,24 +343,16 @@ func (channel *Channel) onFileRecvChunk(t *gotox.Tox, friendnumber uint32, filen
 		log.Println("File doesn't seem to exist!")
 		return
 	}
-
-	// Finished receiving file
+	// this means the file has been completey received
 	if position == channel.transfersFilesizes[filenumber] {
+		// ensure file is written
 		f := channel.transfers[filenumber]
 		f.Sync()
 		f.Close()
+		// free resources
 		delete(channel.transfers, filenumber)
 		delete(channel.transfersFilesizes, filenumber)
+		// can I read a name of a closed file?
+		channel.callbacks.callbackFileReceived(f.Name())
 	}
-}
-
-/*
-addressOf given friend number.
-*/
-func (channel *Channel) addressOf(friendnumber uint32) (string, error) {
-	publicKey, err := channel.tox.FriendGetPublickey(friendnumber)
-	if err != nil {
-		return "", errLostAddress
-	}
-	return hex.EncodeToString(publicKey), nil
 }

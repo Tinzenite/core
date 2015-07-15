@@ -441,6 +441,23 @@ func (t *Tinzenite) callbackAllowFile(address, identification string) bool {
 }
 
 /*
+callbackFilePath is for channel. It should return the path where the file is to
+be written.
+*/
+func (t *Tinzenite) callbackFilePath(identification string) string {
+	return t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR + "/" + identification
+}
+
+/*
+callbackFileReceived is for channel. It is called once the file has been successfully
+received, thus initiates the actual local merging into the model.
+*/
+func (t *Tinzenite) callbackFileReceived(identification string) {
+	log.Printf("File %s is now ready for model update!\n", identification)
+	/*TODO check request if file is delta / must be decrypted before applying to model*/
+}
+
+/*
 Merge an update message to the local model.
 
 TODO: with move implemented one of the merged file copies can be kept and simply
