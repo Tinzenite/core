@@ -184,8 +184,10 @@ TODO: fetches model from other peers and syncs (this is for manual sync)
 */
 func (t *Tinzenite) SyncRemote() error {
 	// iterate over all known peers
-	// TODO the following can be parallelized!
-	t.send("Want update! <-- TODO replace with something sensible...")
+	//the following can be parallelized!
+	msg := createRequestMessage(ReModel, "")
+	t.send(msg.String())
+	/*TODO implement model detection on receive? Not here, I guess?*/
 	return nil
 }
 

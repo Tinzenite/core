@@ -117,7 +117,7 @@ func (m *model) PartialUpdate(scope string) error {
 	return m.Store()
 }
 
-func (m *model) SyncModel(root *ObjectInfo) {
+func (m *model) SyncModel(root *ObjectInfo) ([]*UpdateMessage, error) {
 	/*
 		TODO: how to implement this.
 		Maybe: make a check method that simply returns whether Tinzenite needs to
@@ -125,6 +125,43 @@ func (m *model) SyncModel(root *ObjectInfo) {
 
 		Will also need to work on how TINZENITE fetches the files (from multiple etc.)
 	*/
+	return nil, ErrUnsupported
+}
+
+/*
+SyncObject returns an UpdateMessage of the change we may need to apply if
+applicable. May return nil, that means that the update must not be applied (for
+example if the object has not changed).
+*/
+func (m *model) SyncObject(obj *ObjectInfo) (*UpdateMessage, error) {
+	// we'll need the local path so create that up front
+	path := createPathRoot(m.Root).Apply(obj.Path)
+	// modfiy
+	_, exists := m.Tracked[path.FullPath()]
+	if exists {
+		/*TODO check if modify actually happened and we need to do something with it*/
+		// get staticinfo
+		stin, ok := m.Objinfo[path.FullPath()]
+		if !ok {
+			return nil, errModelInconsitent
+		}
+		_, valid := stin.Version.Valid(obj.Version, m.SelfID)
+		if !valid {
+			log.Println("Unsure if this is correct... check version stuff!")
+			return nil, errConflict
+		}
+		if stin.Content == obj.Content {
+			log.Println("No update required!")
+			return nil, nil
+		}
+		log.Println("Must update, creating message!")
+		return &UpdateMessage{
+			Type:      MsgUpdate,
+			Operation: OpModify,
+			Object:    *obj}, nil
+	}
+	log.Println("Create and delete not yet implemented!")
+	return nil, ErrUnsupported
 }
 
 /*
