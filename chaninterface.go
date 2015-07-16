@@ -12,7 +12,37 @@ chaninterface implements the channel.Callbacks interface so that Tinzenite doesn
 export them unnecessarily.
 */
 type chaninterface struct {
+	// reference back to Tinzenite
 	tin *Tinzenite
+	// map of transfer objects, referenced by the object id
+	transfers map[string]transfer
+	// active stores all active file transfers so that we avoid getting multiple files from one peer at once
+	active []string
+}
+
+type transfer struct {
+	// peers stores the addresses of all known peers that have the file update
+	peers []string
+	// the message to apply once the file has been received
+	success UpdateMessage
+}
+
+/*
+RequestFileTransfer is to be called by Tinzenite to authorize a file transfer
+and to store what is to be done once it is successful. Handles multiplexing of
+transfers as well. NOTE: Not a callback method.
+*/
+func (c *chaninterface) RequestFileTransfer(address, ID string, um UpdateMessage) {
+	/*TODO store transfer, send request file, prepare apply on successful file
+	transfer, remove temp data if not successful*/
+	if tran, exists := c.transfers[ID]; exists {
+		// add peer to available possibilities
+		tran.peers = append(tran.peers, address)
+		/*TODO check if we need to update updatemessage!*/
+		log.Println("Transfer already exists, added peer!")
+		return
+	}
+	/*TODO create new one*/
 }
 
 /*
