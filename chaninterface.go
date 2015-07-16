@@ -19,6 +19,7 @@ type chaninterface struct {
 	transfers map[string]transfer
 	// active stores all active file transfers so that we avoid getting multiple files from one peer at once
 	active   map[string]bool
+	recpath  string
 	temppath string
 }
 
@@ -27,6 +28,7 @@ func createChannelInterface(t *Tinzenite) *chaninterface {
 		tin:       t,
 		transfers: make(map[string]transfer),
 		active:    make(map[string]bool),
+		recpath:   t.Path + "/" + TINZENITEDIR + "/" + RECEIVINGDIR,
 		temppath:  t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR}
 }
 
@@ -91,7 +93,7 @@ func (c *chaninterface) OnAllowFile(address, identification string) (bool, strin
 	c.active[address] = true
 	// name is address.identification to allow differentiating between same file from multiple peers
 	filename := address + "." + identification
-	return true, c.temppath + "/" + filename
+	return true, c.recpath + "/" + filename
 }
 
 /*
@@ -116,13 +118,19 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 		// remove from transfers
 		delete(c.transfers, identification)
 		/*TODO remove any broken remaining temp files*/
-		err := os.Remove(c.temppath + "/" + filename)
+		err := os.Remove(c.recpath + "/" + filename)
 		if err != nil {
 			log.Println("Failed to remove broken transfer file: " + err.Error())
 		}
 		return
 	}
 	log.Println("Received file will now be applied.")
+	// move from receiving to temp
+	err := os.Rename(c.recpath+"/"+filename, c.temppath+"/"+identification)
+	if err != nil {
+		log.Println("Failed to move file to temp: " + err.Error())
+		return
+	}
 	c.tin.model.ApplyUpdateMessage(&tran.success)
 	// aaaand done!
 }

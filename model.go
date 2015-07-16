@@ -491,7 +491,8 @@ func (m *model) applyRemove(path *relativePath, remoteObject *ObjectInfo) error 
 		notifyObj = remoteObject
 	} else {
 		if !localRemove {
-			log.Println("File still exists!")
+			/*TODO must check newly tinignore added files that remain on disk! --> not an error!*/
+			log.Println("Remove failed: file still exists!")
 			return errIllegalFileState
 		}
 		// build a somewhat adequate object to send (important is only the ID anyway)

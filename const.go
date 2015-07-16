@@ -47,6 +47,7 @@ const (
 	DIRECTORYLIST = "directory.list"
 	LOCALDIR      = "local"
 	TEMPDIR       = "temp"
+	RECEIVINGDIR  = "receiving"
 	REMOVEDIR     = "removed"
 	ORGDIR        = "org"
 	PEERSDIR      = "peers"
@@ -68,4 +69,4 @@ const (
 )
 
 // .tinignore content for .tinzenite directory
-const TINDIRIGNORE = "# DO NOT MODIFY!\n/" + LOCALDIR + "\n/" + TEMPDIR
+const TINDIRIGNORE = "# DO NOT MODIFY!\n/" + LOCALDIR + "\n/" + TEMPDIR + "\n/" + RECEIVINGDIR

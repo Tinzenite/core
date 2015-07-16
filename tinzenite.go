@@ -258,7 +258,7 @@ including the .tinignore file required for it.
 func (t *Tinzenite) makeDotTinzenite() error {
 	root := t.Path + "/" + TINZENITEDIR
 	// build directory structure
-	err := makeDirectories(root, ORGDIR+"/"+PEERSDIR, TEMPDIR, REMOVEDIR, LOCALDIR)
+	err := makeDirectories(root, ORGDIR+"/"+PEERSDIR, TEMPDIR, REMOVEDIR, LOCALDIR, RECEIVINGDIR)
 	if err != nil {
 		return err
 	}
