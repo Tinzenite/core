@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 )
 
 /*
@@ -17,7 +18,16 @@ type chaninterface struct {
 	// map of transfer objects, referenced by the object id
 	transfers map[string]transfer
 	// active stores all active file transfers so that we avoid getting multiple files from one peer at once
-	active map[string]bool
+	active   map[string]bool
+	temppath string
+}
+
+func createChannelInterface(t *Tinzenite) *chaninterface {
+	return &chaninterface{
+		tin:       t,
+		transfers: make(map[string]transfer),
+		active:    make(map[string]bool),
+		temppath:  t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR}
 }
 
 type transfer struct {
@@ -36,8 +46,6 @@ func (c *chaninterface) RequestFileTransfer(address string, um UpdateMessage) {
 	log.Println("Requesting file transfer!")
 	ident := um.Object.Identification
 	if tran, exists := c.transfers[ident]; exists {
-		// add peer to available possibilities
-		tran.peers = append(tran.peers, address)
 		// check if we need to update updatemessage
 		oldVersion := tran.success.Object.Version
 		newVersion := um.Object.Version
@@ -48,6 +56,8 @@ func (c *chaninterface) RequestFileTransfer(address string, um UpdateMessage) {
 			c.transfers[ident] = tran
 			log.Println("Updated transfer!")
 		}
+		// add peer to available possibilities
+		tran.peers = append(tran.peers, address)
 		log.Println("Transfer already exists, added peer!")
 		return
 	}
@@ -81,17 +91,24 @@ func (c *chaninterface) OnAllowFile(address, identification string) (bool, strin
 	c.active[address] = true
 	// name is address.identification to allow differentiating between same file from multiple peers
 	filename := address + "." + identification
-	return true, c.tin.Path + "/" + TINZENITEDIR + "/" + TEMPDIR + "/" + filename
+	return true, c.temppath + "/" + filename
 }
 
 /*
 callbackFileReceived is for channel. It is called once the file has been successfully
 received, thus initiates the actual local merging into the model.
 */
-func (c *chaninterface) OnFileReceived(address, identification string) {
+func (c *chaninterface) OnFileReceived(address, path, filename string) {
 	// always free peer here
 	log.Println("Removing from active.")
 	delete(c.active, address)
+	// split filename to get identification
+	check := strings.Split(filename, ".")[0]
+	identification := strings.Split(filename, ".")[1]
+	if check != address {
+		log.Println("Filename is mismatched!")
+		return
+	}
 	/*TODO check request if file is delta / must be decrypted before applying to model*/
 	tran, exists := c.transfers[identification]
 	if !exists {
@@ -99,10 +116,15 @@ func (c *chaninterface) OnFileReceived(address, identification string) {
 		// remove from transfers
 		delete(c.transfers, identification)
 		/*TODO remove any broken remaining temp files*/
+		err := os.Remove(c.temppath + "/" + filename)
+		if err != nil {
+			log.Println("Failed to remove broken transfer file: " + err.Error())
+		}
 		return
 	}
-	log.Println("Received file is being applied.")
+	log.Println("Received file will now be applied.")
 	c.tin.model.ApplyUpdateMessage(&tran.success)
+	// aaaand done!
 }
 
 /*

@@ -24,7 +24,7 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 		Path: dirpath,
 		auth: auth}
 	// prepare chaninterface
-	tinzenite.cInterface = &chaninterface{tin: tinzenite}
+	tinzenite.cInterface = createChannelInterface(tinzenite)
 	// build channel
 	channel, err := channel.Create(peername, nil, tinzenite.cInterface)
 	if err != nil {
@@ -109,7 +109,7 @@ func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
 	}
 	t.selfpeer = selfToxDump.SelfPeer
 	// prepare chaninterface
-	t.cInterface = &chaninterface{tin: t}
+	t.cInterface = createChannelInterface(t)
 	// prepare channel
 	channel, err := channel.Create(t.selfpeer.Name, selfToxDump.ToxData, t.cInterface)
 	if err != nil {
