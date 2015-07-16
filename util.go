@@ -245,3 +245,12 @@ func (s sortable) Less(i, j int) bool {
 	// path are sorted alphabetically all by themselves! :D
 	return s[i].Path < s[j].Path
 }
+
+func contains(s []string, value string) bool {
+	for _, entry := range s {
+		if entry == value {
+			return true
+		}
+	}
+	return false
+}

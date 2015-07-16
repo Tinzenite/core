@@ -17,7 +17,7 @@ type chaninterface struct {
 	// map of transfer objects, referenced by the object id
 	transfers map[string]transfer
 	// active stores all active file transfers so that we avoid getting multiple files from one peer at once
-	active []string
+	active map[string]bool
 }
 
 type transfer struct {
@@ -32,35 +32,77 @@ RequestFileTransfer is to be called by Tinzenite to authorize a file transfer
 and to store what is to be done once it is successful. Handles multiplexing of
 transfers as well. NOTE: Not a callback method.
 */
-func (c *chaninterface) RequestFileTransfer(address, ID string, um UpdateMessage) {
-	/*TODO store transfer, send request file, prepare apply on successful file
-	transfer, remove temp data if not successful*/
-	if tran, exists := c.transfers[ID]; exists {
+func (c *chaninterface) RequestFileTransfer(address string, um UpdateMessage) {
+	log.Println("Requesting file transfer!")
+	ident := um.Object.Identification
+	if tran, exists := c.transfers[ident]; exists {
 		// add peer to available possibilities
 		tran.peers = append(tran.peers, address)
-		/*TODO check if we need to update updatemessage!*/
+		// check if we need to update updatemessage
+		oldVersion := tran.success.Object.Version
+		newVersion := um.Object.Version
+		if newVersion.Max() > oldVersion.Max() {
+			/*TODO restart file transfer if applicable... oO*/
+			/*TODO do I kick the old peer too?*/
+			tran.success = um
+			c.transfers[ident] = tran
+			log.Println("Updated transfer!")
+		}
 		log.Println("Transfer already exists, added peer!")
 		return
 	}
-	/*TODO create new one*/
+	// create new one
+	tran := transfer{peers: []string{address}, success: um}
+	// add
+	c.transfers[ident] = tran
+	/*TODO send request to only one underutilized peer at once*/
+	// FOR NOW: just get it from whomever send the update
+	reqMsg := createRequestMessage(ReObject, ident)
+	c.tin.channel.Send(address, reqMsg.String())
 }
 
 /*
-TODO finish implementing
+OnAllowFile is the callback that checks whether the transfer is to be accepted or
+not. Checks the address and identification of the object against c.transfers.
 */
 func (c *chaninterface) OnAllowFile(address, identification string) (bool, string) {
-	// for now accept every transfer
+	tran, exists := c.transfers[identification]
+	if !exists {
+		log.Println("Transfer not authorized!")
+		return false, ""
+	}
+	if !contains(tran.peers, address) {
+		log.Println("Peer not authorized for transfer!")
+		return false, ""
+	}
+	// here accept transfer
 	log.Printf("Allowing file <%s> from %s\n", identification, address)
-	return true, c.tin.Path + "/" + TINZENITEDIR + "/" + TEMPDIR + "/" + identification
+	// add to active
+	c.active[address] = true
+	// name is address.identification to allow differentiating between same file from multiple peers
+	filename := address + "." + identification
+	return true, c.tin.Path + "/" + TINZENITEDIR + "/" + TEMPDIR + "/" + filename
 }
 
 /*
 callbackFileReceived is for channel. It is called once the file has been successfully
 received, thus initiates the actual local merging into the model.
 */
-func (c *chaninterface) OnFileReceived(identification string) {
-	log.Printf("File %s is now ready for model update!\n", identification)
+func (c *chaninterface) OnFileReceived(address, identification string) {
+	// always free peer here
+	log.Println("Removing from active.")
+	delete(c.active, address)
 	/*TODO check request if file is delta / must be decrypted before applying to model*/
+	tran, exists := c.transfers[identification]
+	if !exists {
+		log.Println("Transfer doesn't even exist anymore! Something bad went wrong...")
+		// remove from transfers
+		delete(c.transfers, identification)
+		/*TODO remove any broken remaining temp files*/
+		return
+	}
+	log.Println("Received file is being applied.")
+	c.tin.model.ApplyUpdateMessage(&tran.success)
 }
 
 /*
@@ -101,9 +143,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-			reqMsg := createRequestMessage(ReObject, msg.Object.Identification)
-			c.tin.channel.Send(address, reqMsg.String())
-			/* TODO implement application of msg as wit manual command but will need to fetch file first...*/
+			c.RequestFileTransfer(address, *msg)
 		case MsgRequest:
 			log.Println("Request received!")
 			c.tin.channel.Send(address, "Sending File (TODO)")
@@ -127,8 +167,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				return
 			}
 			// send request for object
-			c.tin.send(address, um.String())
-			/*TODO: allow file transfer, when done apply um*/
+			c.RequestFileTransfer(address, *um)
 		default:
 			log.Printf("Unknown object sent: %s!\n", msgType)
 		}
