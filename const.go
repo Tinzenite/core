@@ -23,6 +23,7 @@ var (
 	errIllegalFileState  = errors.New("illegal file state detected")
 	errModelInconsitent  = errors.New("model tracked and staticinfo are inconsistent")
 	errMissingUpdateFile = errors.New("file for update missing from temp")
+	errMismatch          = errors.New("mismatch in structs")
 )
 
 // constant value here

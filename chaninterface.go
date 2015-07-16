@@ -212,7 +212,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 		/*TODO implement remove merge conflict!*/
 	case "show":
 		// helpful command that creates a model update message so that I can test it
-		obj, _ := createObjectInfo(c.t.Path, "test.txt", c.t.model.SelfID)
+		obj, _ := c.t.model.getInfo(createPath(c.t.Path, "test.txt"))
 		mm := createModelMessage(*obj)
 		c.t.send(address, mm.String())
 	default:

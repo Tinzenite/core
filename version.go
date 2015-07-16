@@ -28,10 +28,14 @@ func (v version) Max() int {
 	return max
 }
 
+/*
+Valid checks whether the version can be automerged or whether manual resolution
+is required.
+*/
 func (v version) Valid(that version, selfid string) (version, bool) {
 	if v.Max() > that.Max() {
-		// other peer is missing updates!
-		log.Println("Merge conflict! Modify is based on out of date file.")
+		// local version is ahead
+		log.Println("Local version is ahead of remote version!")
 		return v, false
 	}
 	// if local changes don't even exist no need to check the following

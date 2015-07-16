@@ -135,34 +135,25 @@ example if the object has not changed).
 */
 func (m *model) SyncObject(obj *ObjectInfo) (*UpdateMessage, error) {
 	// we'll need the local path so create that up front
-	path := createPathRoot(m.Root).Apply(obj.Path)
-	log.Println("Path: " + path.FullPath())
+	path := createPath(m.Root, obj.Path)
 	// modfiy
 	_, exists := m.Tracked[path.FullPath()]
 	if exists {
-		/*TODO check if modify actually happened and we need to do something with it*/
 		// get staticinfo
 		stin, ok := m.Objinfo[path.FullPath()]
 		if !ok {
 			return nil, errModelInconsitent
 		}
 		// sanity checks
-		if stin.Identification != obj.Identification {
-			log.Println("IDs don't match!")
-			return nil, errModelInconsitent
-		}
-		_, valid := stin.Version.Valid(obj.Version, m.SelfID)
-		if !valid {
-			log.Println("Unsure if this is correct... check version stuff!")
-			return nil, errConflict
+		if stin.Identification != obj.Identification || stin.Directory != obj.directory {
+			return nil, errMismatch
 		}
 		/*TODO what about directories?*/
-		log.Printf("Stin:\n%s\n", stin.String())
 		if stin.Content == obj.Content {
+			/*TODO what about the version numbers?*/
 			log.Println("No update required!")
 			return nil, nil
 		}
-		log.Println("Must update, creating message!")
 		return &UpdateMessage{
 			Type:      MsgUpdate,
 			Operation: OpModify,
