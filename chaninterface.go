@@ -312,6 +312,11 @@ func (c *chaninterface) OnMessage(address, message string) {
 		obj, _ := c.tin.model.getInfo(createPath(c.tin.Path, "test.txt"))
 		mm := createModelMessage(*obj)
 		c.tin.send(address, mm.String())
+	case "send":
+		err := c.tin.channel.SendFile("ed284a9fa07142cb8f6fa8c821d7f722cf63d2c7f74390566c6949bdb898b33e", []byte("Test file contents... :P"))
+		if err != nil {
+			log.Println("Error sending file: " + err.Error())
+		}
 	default:
 		c.tin.channel.Send(address, "ACK")
 	}
