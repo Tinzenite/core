@@ -12,7 +12,7 @@ chaninterface implements the channel.Callbacks interface so that Tinzenite doesn
 export them unnecessarily.
 */
 type chaninterface struct {
-	t *Tinzenite
+	tin *Tinzenite
 }
 
 /*
@@ -21,7 +21,7 @@ TODO finish implementing
 func (c *chaninterface) OnAllowFile(address, identification string) (bool, string) {
 	// for now accept every transfer
 	log.Printf("Allowing file <%s> from %s\n", identification, address)
-	return true, c.t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR + "/" + identification
+	return true, c.tin.Path + "/" + TINZENITEDIR + "/" + TEMPDIR + "/" + identification
 }
 
 /*
@@ -38,7 +38,7 @@ CallbackNewConnection is called when a new connection request comes in.
 */
 func (c *chaninterface) OnNewConnection(address, message string) {
 	log.Printf("New connection from <%s> with message <%s>\n", address, message)
-	err := c.t.channel.AcceptConnection(address)
+	err := c.tin.channel.AcceptConnection(address)
 	if err != nil {
 		log.Println(err.Error())
 		return
@@ -46,7 +46,7 @@ func (c *chaninterface) OnNewConnection(address, message string) {
 	/*TODO actually this should be read from disk once the peer has synced... oO
 	Correction: read from message other peer info */
 	newID, _ := newIdentifier()
-	c.t.allPeers = append(c.t.allPeers, &Peer{
+	c.tin.allPeers = append(c.tin.allPeers, &Peer{
 		Identification: newID,   // must be read from message
 		Name:           message, // must be read from message
 		Address:        address,
@@ -72,11 +72,11 @@ func (c *chaninterface) OnMessage(address, message string) {
 				return
 			}
 			reqMsg := createRequestMessage(ReObject, msg.Object.Identification)
-			c.t.channel.Send(address, reqMsg.String())
+			c.tin.channel.Send(address, reqMsg.String())
 			/* TODO implement application of msg as wit manual command but will need to fetch file first...*/
 		case MsgRequest:
 			log.Println("Request received!")
-			c.t.channel.Send(address, "Sending File (TODO)")
+			c.tin.channel.Send(address, "Sending File (TODO)")
 			/* TODO implement sending of file*/
 		case MsgModel:
 			msg := &ModelMessage{}
@@ -86,7 +86,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				return
 			}
 			// create updatemessage
-			um, err := c.t.model.SyncObject(&msg.Object)
+			um, err := c.tin.model.SyncObject(&msg.Object)
 			if err != nil {
 				log.Println(err.Error())
 				return
@@ -97,7 +97,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				return
 			}
 			// send request for object
-			c.t.send(address, um.String())
+			c.tin.send(address, um.String())
 			/*TODO: allow file transfer, when done apply um*/
 		default:
 			log.Printf("Unknown object sent: %s!\n", msgType)
@@ -108,31 +108,31 @@ func (c *chaninterface) OnMessage(address, message string) {
 	// if unmarshal didn't work check for plain commands:
 	switch message {
 	case "model":
-		model, err := c.t.model.Read()
+		model, err := c.tin.model.Read()
 		/*TODO need to implement this better, model is too large for normal msg*/
-		err = c.t.send(address, model.String()[:1000])
+		err = c.tin.send(address, model.String()[:1000])
 		if err != nil {
 			log.Println(err.Error())
 		}
 	case "auth":
-		authbin, _ := json.Marshal(c.t.auth)
-		c.t.channel.Send(address, string(authbin))
+		authbin, _ := json.Marshal(c.tin.auth)
+		c.tin.channel.Send(address, string(authbin))
 	case "create":
 		// CREATE
 		// messy but works: create file correctly, create objs, then move it to the correct temp location
 		// first named create.txt to enable testing of create merge
-		os.Create(c.t.Path + "/create.txt")
-		ioutil.WriteFile(c.t.Path+"/create.txt", []byte("bonjour!"), FILEPERMISSIONMODE)
-		obj, _ := createObjectInfo(c.t.Path, "create.txt", "otheridhere")
-		os.Rename(c.t.Path+"/create.txt", c.t.Path+"/"+TINZENITEDIR+"/"+TEMPDIR+"/"+obj.Identification)
+		os.Create(c.tin.Path + "/create.txt")
+		ioutil.WriteFile(c.tin.Path+"/create.txt", []byte("bonjour!"), FILEPERMISSIONMODE)
+		obj, _ := createObjectInfo(c.tin.Path, "create.txt", "otheridhere")
+		os.Rename(c.tin.Path+"/create.txt", c.tin.Path+"/"+TINZENITEDIR+"/"+TEMPDIR+"/"+obj.Identification)
 		obj.Name = "test.txt"
 		obj.Path = "test.txt"
 		msg := &UpdateMessage{
 			Operation: OpCreate,
 			Object:    *obj}
-		err := c.t.model.ApplyUpdateMessage(msg)
+		err := c.tin.model.ApplyUpdateMessage(msg)
 		if err == errConflict {
-			err := c.t.merge(msg)
+			err := c.tin.merge(msg)
 			if err != nil {
 				log.Println("Merge: " + err.Error())
 			}
@@ -141,12 +141,12 @@ func (c *chaninterface) OnMessage(address, message string) {
 		}
 	case "modify":
 		// MODIFY
-		obj, _ := createObjectInfo(c.t.Path, "test.txt", "otheridhere")
-		orig, _ := c.t.model.Objinfo[c.t.Path+"/test.txt"]
+		obj, _ := createObjectInfo(c.tin.Path, "test.txt", "otheridhere")
+		orig, _ := c.tin.model.Objinfo[c.tin.Path+"/test.txt"]
 		// id must be same
 		obj.Identification = orig.Identification
 		// version apply so that we can always "update" it
-		obj.Version[c.t.model.SelfID] = orig.Version[c.t.model.SelfID]
+		obj.Version[c.tin.model.SelfID] = orig.Version[c.tin.model.SelfID]
 		// if orig already has, increase further
 		value, ok := orig.Version["otheridhere"]
 		if ok {
@@ -154,23 +154,23 @@ func (c *chaninterface) OnMessage(address, message string) {
 		}
 		// add one new version
 		obj.Version.Increase("otheridhere")
-		err := c.t.model.ApplyUpdateMessage(&UpdateMessage{
+		err := c.tin.model.ApplyUpdateMessage(&UpdateMessage{
 			Operation: OpModify,
 			Object:    *obj})
 		if err != nil {
 			log.Println(err.Error())
 		}
 	case "sendmodify":
-		path := c.t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
-		orig, _ := c.t.model.Objinfo[c.t.Path+"/test.txt"]
+		path := c.tin.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
+		orig, _ := c.tin.model.Objinfo[c.tin.Path+"/test.txt"]
 		// write change to file in temp, simulating successful download
 		ioutil.WriteFile(path+"/"+orig.Identification, []byte("send modify hello world!"), FILEPERMISSIONMODE)
 	case "testdir":
 		// Test creation and removal of directory
-		makeDirectory(c.t.Path + "/dirtest")
-		obj, _ := createObjectInfo(c.t.Path, "dirtest", "dirtestpeer")
-		os.Remove(c.t.Path + "/dirtest")
-		err := c.t.model.ApplyUpdateMessage(&UpdateMessage{
+		makeDirectory(c.tin.Path + "/dirtest")
+		obj, _ := createObjectInfo(c.tin.Path, "dirtest", "dirtestpeer")
+		os.Remove(c.tin.Path + "/dirtest")
+		err := c.tin.model.ApplyUpdateMessage(&UpdateMessage{
 			Operation: OpCreate,
 			Object:    *obj})
 		if err != nil {
@@ -178,20 +178,20 @@ func (c *chaninterface) OnMessage(address, message string) {
 		}
 	case "conflict":
 		// MODIFY that creates merge conflict
-		path := c.t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
-		ioutil.WriteFile(c.t.Path+"/merge.txt", []byte("written from conflict test"), FILEPERMISSIONMODE)
-		obj, _ := createObjectInfo(c.t.Path, "merge.txt", "otheridhere")
-		os.Rename(c.t.Path+"/merge.txt", path+"/"+obj.Identification)
+		path := c.tin.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
+		ioutil.WriteFile(c.tin.Path+"/merge.txt", []byte("written from conflict test"), FILEPERMISSIONMODE)
+		obj, _ := createObjectInfo(c.tin.Path, "merge.txt", "otheridhere")
+		os.Rename(c.tin.Path+"/merge.txt", path+"/"+obj.Identification)
 		obj.Path = "test.txt"
 		obj.Name = "test.txt"
-		obj.Version[c.t.model.SelfID] = -1
+		obj.Version[c.tin.model.SelfID] = -1
 		obj.Version.Increase("otheridhere") // the remote change
 		msg := &UpdateMessage{
 			Operation: OpModify,
 			Object:    *obj}
-		err := c.t.model.ApplyUpdateMessage(msg)
+		err := c.tin.model.ApplyUpdateMessage(msg)
 		if err == errConflict {
-			err := c.t.merge(msg)
+			err := c.tin.merge(msg)
 			if err != nil {
 				log.Println("Merge: " + err.Error())
 			}
@@ -200,22 +200,22 @@ func (c *chaninterface) OnMessage(address, message string) {
 		}
 	case "delete":
 		// DELETE
-		obj, err := createObjectInfo(c.t.Path, "test.txt", "otheridhere")
+		obj, err := createObjectInfo(c.tin.Path, "test.txt", "otheridhere")
 		if err != nil {
 			log.Println(err.Error())
 			return
 		}
-		os.Remove(c.t.Path + "/test.txt")
-		c.t.model.ApplyUpdateMessage(&UpdateMessage{
+		os.Remove(c.tin.Path + "/test.txt")
+		c.tin.model.ApplyUpdateMessage(&UpdateMessage{
 			Operation: OpRemove,
 			Object:    *obj})
 		/*TODO implement remove merge conflict!*/
 	case "show":
 		// helpful command that creates a model update message so that I can test it
-		obj, _ := c.t.model.getInfo(createPath(c.t.Path, "test.txt"))
+		obj, _ := c.tin.model.getInfo(createPath(c.tin.Path, "test.txt"))
 		mm := createModelMessage(*obj)
-		c.t.send(address, mm.String())
+		c.tin.send(address, mm.String())
 	default:
-		c.t.channel.Send(address, "ACK")
+		c.tin.channel.Send(address, "ACK")
 	}
 }
