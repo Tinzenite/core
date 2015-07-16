@@ -45,7 +45,6 @@ and to store what is to be done once it is successful. Handles multiplexing of
 transfers as well. NOTE: Not a callback method.
 */
 func (c *chaninterface) RequestFileTransfer(address string, um UpdateMessage) {
-	log.Println("Requesting file transfer!")
 	ident := um.Object.Identification
 	if tran, exists := c.transfers[ident]; exists {
 		// check if we need to update updatemessage
@@ -88,7 +87,7 @@ func (c *chaninterface) OnAllowFile(address, identification string) (bool, strin
 		return false, ""
 	}
 	// here accept transfer
-	log.Printf("Allowing file <%s> from %s\n", identification, address)
+	// log.Printf("Allowing file <%s> from %s\n", identification, address)
 	// add to active
 	c.active[address] = true
 	// name is address.identification to allow differentiating between same file from multiple peers
@@ -102,7 +101,6 @@ received, thus initiates the actual local merging into the model.
 */
 func (c *chaninterface) OnFileReceived(address, path, filename string) {
 	// always free peer here
-	log.Println("Removing from active.")
 	delete(c.active, address)
 	// split filename to get identification
 	check := strings.Split(filename, ".")[0]
@@ -124,14 +122,16 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 		}
 		return
 	}
-	log.Println("Received file will now be applied.")
 	// move from receiving to temp
 	err := os.Rename(c.recpath+"/"+filename, c.temppath+"/"+identification)
 	if err != nil {
 		log.Println("Failed to move file to temp: " + err.Error())
 		return
 	}
-	c.tin.model.ApplyUpdateMessage(&tran.success)
+	err = c.applyUpdateWithMerge(tran.success)
+	if err != nil {
+		log.Println("File application error: " + err.Error())
+	}
 	// aaaand done!
 }
 
@@ -173,7 +173,15 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-			c.RequestFileTransfer(address, *msg)
+			if op := msg.Operation; op == OpCreate || op == OpModify {
+				// create & modify must first fetch file
+				c.RequestFileTransfer(address, *msg)
+			} else if op == OpRemove {
+				// remove is without file transfer, so directly apply
+				c.applyUpdateWithMerge(*msg)
+			} else {
+				log.Println("Unknown operation received, ignoring update message!")
+			}
 		case MsgRequest:
 			log.Println("Request received!")
 			c.tin.channel.Send(address, "Sending File (TODO)")
@@ -229,14 +237,9 @@ func (c *chaninterface) OnMessage(address, message string) {
 		msg := &UpdateMessage{
 			Operation: OpCreate,
 			Object:    *obj}
-		err := c.tin.model.ApplyUpdateMessage(msg)
-		if err == errConflict {
-			err := c.tin.merge(msg)
-			if err != nil {
-				log.Println("Merge: " + err.Error())
-			}
-		} else if err != nil {
-			log.Println(err.Error())
+		err := c.applyUpdateWithMerge(*msg)
+		if err != nil {
+			log.Println("Create error: " + err.Error())
 		}
 	case "modify":
 		// MODIFY
@@ -288,14 +291,9 @@ func (c *chaninterface) OnMessage(address, message string) {
 		msg := &UpdateMessage{
 			Operation: OpModify,
 			Object:    *obj}
-		err := c.tin.model.ApplyUpdateMessage(msg)
-		if err == errConflict {
-			err := c.tin.merge(msg)
-			if err != nil {
-				log.Println("Merge: " + err.Error())
-			}
-		} else {
-			log.Println("WHY NO MERGE?!")
+		err := c.applyUpdateWithMerge(*msg)
+		if err != nil {
+			log.Println("Conflict error: " + err.Error())
 		}
 	case "delete":
 		// DELETE
@@ -317,4 +315,19 @@ func (c *chaninterface) OnMessage(address, message string) {
 	default:
 		c.tin.channel.Send(address, "ACK")
 	}
+}
+
+/*
+applyUpdateWithMerge does exactly that. First it tries to apply the update. If it
+fails with a merge a merge is done.
+*/
+func (c *chaninterface) applyUpdateWithMerge(msg UpdateMessage) error {
+	err := c.tin.model.ApplyUpdateMessage(&msg)
+	if err == errConflict {
+		err := c.tin.merge(&msg)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
