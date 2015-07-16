@@ -78,6 +78,27 @@ func (c *chaninterface) OnMessage(address, message string) {
 			log.Println("Request received!")
 			c.t.channel.Send(address, "Sending File (TODO)")
 			/* TODO implement sending of file*/
+		case MsgModel:
+			msg := &ModelMessage{}
+			err := json.Unmarshal([]byte(message), msg)
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
+			// create updatemessage
+			um, err := c.t.model.SyncObject(&msg.Object)
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
+			// if nil we don't need to do anything --> no update necessary
+			if um == nil {
+				log.Println("Nothing to do for object!")
+				return
+			}
+			// send request for object
+			c.t.send(address, um.String())
+			/*TODO: allow file transfer, when done apply um*/
 		default:
 			log.Printf("Unknown object sent: %s!\n", msgType)
 		}
@@ -87,7 +108,12 @@ func (c *chaninterface) OnMessage(address, message string) {
 	// if unmarshal didn't work check for plain commands:
 	switch message {
 	case "model":
-		c.t.channel.Send(address, c.t.model.String())
+		model, err := c.t.model.Read()
+		/*TODO need to implement this better, model is too large for normal msg*/
+		err = c.t.send(address, model.String()[:1000])
+		if err != nil {
+			log.Println(err.Error())
+		}
 	case "auth":
 		authbin, _ := json.Marshal(c.t.auth)
 		c.t.channel.Send(address, string(authbin))
@@ -184,6 +210,11 @@ func (c *chaninterface) OnMessage(address, message string) {
 			Operation: OpRemove,
 			Object:    *obj})
 		/*TODO implement remove merge conflict!*/
+	case "show":
+		// helpful command that creates a model update message so that I can test it
+		obj, _ := createObjectInfo(c.t.Path, "test.txt", c.t.model.SelfID)
+		mm := createModelMessage(*obj)
+		c.t.send(address, mm.String())
 	default:
 		c.t.channel.Send(address, "ACK")
 	}

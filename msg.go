@@ -57,3 +57,23 @@ func (rm *RequestMessage) String() string {
 	data, _ := json.Marshal(rm)
 	return string(data)
 }
+
+/*
+ModelMessage is used to send a ObjectInfo, either completely or just a single
+object.
+*/
+type ModelMessage struct {
+	Type   MsgType
+	Object ObjectInfo
+}
+
+func createModelMessage(object ObjectInfo) ModelMessage {
+	return ModelMessage{
+		Type:   MsgModel,
+		Object: object}
+}
+
+func (mm *ModelMessage) String() string {
+	data, _ := json.Marshal(mm)
+	return string(data)
+}

@@ -1,5 +1,7 @@
 package core
 
+import "encoding/json"
+
 /*
 ObjectInfo represents the in model object fully.
 */
@@ -40,4 +42,12 @@ and identification. NOTE: Does not compare any other properties!
 */
 func (o *ObjectInfo) Equal(that *ObjectInfo) bool {
 	return o == that || o.Identification == that.Identification
+}
+
+/*
+String returns a json representation of this object.
+*/
+func (o *ObjectInfo) String() string {
+	data, _ := json.Marshal(o)
+	return string(data)
 }

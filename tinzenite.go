@@ -60,7 +60,7 @@ func (t *Tinzenite) SyncRemote() error {
 	// iterate over all known peers
 	//the following can be parallelized!
 	msg := createRequestMessage(ReModel, "")
-	t.send(msg.String())
+	t.sendAll(msg.String())
 	/*TODO implement model detection on receive? Not here, I guess?*/
 	return nil
 }
@@ -144,22 +144,28 @@ func (t *Tinzenite) Connect(address string) error {
 /*
 Send the given message string to all online and connected peers.
 */
-func (t *Tinzenite) send(msg string) {
+func (t *Tinzenite) sendAll(msg string) {
 	for _, peer := range t.allPeers {
 		if strings.EqualFold(peer.Address, t.selfpeer.Address) {
 			continue
 		}
-		online, _ := t.channel.IsOnline(peer.Address)
-		if !online {
-			continue
-		}
 		/*TODO - also make this concurrent?*/
-		t.channel.Send(peer.Address, msg)
+		err := t.channel.Send(peer.Address, msg)
+		if err != nil {
+			log.Println(err.Error())
+		}
 		// if online -> continue
 		// if not init -> init
 		// sync
 		/*TODO must store init state in allPeers too, also in future encryption*/
 	}
+}
+
+/*
+Send the given message to the peer with the address if online.
+*/
+func (t *Tinzenite) send(address, msg string) error {
+	return t.channel.Send(address, msg)
 }
 
 /*
@@ -282,7 +288,7 @@ func (t *Tinzenite) background() {
 			t.wg.Done()
 			return
 		case msg := <-t.sendChannel:
-			t.send(msg.String())
+			t.sendAll(msg.String())
 		} // select
 	} // for
 }

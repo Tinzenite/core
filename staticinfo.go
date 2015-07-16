@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"os"
 	"time"
 )
@@ -74,4 +75,9 @@ func (s *staticinfo) ApplyObjectInfo(obj *ObjectInfo) {
 	s.Version = obj.Version
 	s.Directory = obj.directory
 	s.Content = obj.Content
+}
+
+func (s *staticinfo) String() string {
+	data, _ := json.Marshal(s)
+	return string(data)
 }

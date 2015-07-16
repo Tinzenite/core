@@ -24,12 +24,20 @@ func (cm Communication) String() string {
 	}
 }
 
+/*
+MsgType is used to define a message type.
+*/
 type MsgType int
 
 const (
+	/*MsgNone default.*/
 	MsgNone MsgType = iota
+	/*MsgUpdate is an UpdateMessage.*/
 	MsgUpdate
+	/*MsgRequest is a RequestMessage.*/
 	MsgRequest
+	/*MsgModel is a ModelMessage.*/
+	MsgModel
 )
 
 func (msg MsgType) String() string {
@@ -40,6 +48,8 @@ func (msg MsgType) String() string {
 		return "update"
 	case MsgRequest:
 		return "request"
+	case MsgModel:
+		return "model"
 	default:
 		return "unknown"
 	}

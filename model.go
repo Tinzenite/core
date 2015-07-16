@@ -136,6 +136,7 @@ example if the object has not changed).
 func (m *model) SyncObject(obj *ObjectInfo) (*UpdateMessage, error) {
 	// we'll need the local path so create that up front
 	path := createPathRoot(m.Root).Apply(obj.Path)
+	log.Println("Path: " + path.FullPath())
 	// modfiy
 	_, exists := m.Tracked[path.FullPath()]
 	if exists {
@@ -145,11 +146,18 @@ func (m *model) SyncObject(obj *ObjectInfo) (*UpdateMessage, error) {
 		if !ok {
 			return nil, errModelInconsitent
 		}
+		// sanity checks
+		if stin.Identification != obj.Identification {
+			log.Println("IDs don't match!")
+			return nil, errModelInconsitent
+		}
 		_, valid := stin.Version.Valid(obj.Version, m.SelfID)
 		if !valid {
 			log.Println("Unsure if this is correct... check version stuff!")
 			return nil, errConflict
 		}
+		/*TODO what about directories?*/
+		log.Printf("Stin:\n%s\n", stin.String())
 		if stin.Content == obj.Content {
 			log.Println("No update required!")
 			return nil, nil
@@ -575,13 +583,4 @@ func (m *model) notify(op Operation, path *relativePath, obj *ObjectInfo) {
 		}
 		m.updatechan <- createUpdateMessage(op, *obj)
 	}
-}
-
-/*TODO for now only lists all tracked files for debug*/
-func (m *model) String() string {
-	var list string
-	for path := range m.Tracked {
-		list += path + "\n"
-	}
-	return list
 }
