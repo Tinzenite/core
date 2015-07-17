@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"io/ioutil"
 
+	"github.com/tinzenite/shared"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -25,7 +27,7 @@ type Authentication struct {
 loadAuthentication loads the auth.json file for the given Tinzenite directory.
 */
 func loadAuthentication(path string, password string) (*Authentication, error) {
-	data, err := ioutil.ReadFile(path + "/" + TINZENITEDIR + "/" + ORGDIR + "/" + AUTHJSON)
+	data, err := ioutil.ReadFile(path + "/" + shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.AUTHJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +49,7 @@ func loadAuthentication(path string, password string) (*Authentication, error) {
 
 func createAuthentication(path, dirname, username, password string) (*Authentication, error) {
 	// get new directory identifier
-	id, err := newIdentifier()
+	id, err := shared.NewIdentifier()
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +64,7 @@ func createAuthentication(path, dirname, username, password string) (*Authentica
 		return nil, err
 	}
 	// Make a new secure key:
-	data := make([]byte, KEYLENGTH)
+	data := make([]byte, shared.KEYLENGTH)
 	_, err = rand.Read(data)
 	if err != nil {
 		return nil, err
@@ -87,7 +89,7 @@ func (a *Authentication) Store(root string) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(root+"/"+TINZENITEDIR+"/"+ORGDIR+"/"+AUTHJSON, data, FILEPERMISSIONMODE)
+	return ioutil.WriteFile(root+"/"+shared.TINZENITEDIR+"/"+shared.ORGDIR+"/"+shared.AUTHJSON, data, shared.FILEPERMISSIONMODE)
 }
 
 func (a *Authentication) initCipher(password []byte) error {

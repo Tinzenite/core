@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/tinzenite/channel"
+	"github.com/tinzenite/model"
+	"github.com/tinzenite/shared"
 )
 
 /*
@@ -18,12 +20,12 @@ Tinzenite is the struct on which all important operations should be called.
 type Tinzenite struct {
 	Path        string
 	auth        *Authentication
-	selfpeer    *Peer
+	selfpeer    *shared.Peer
 	channel     *channel.Channel
 	cInterface  *chaninterface
-	allPeers    []*Peer
-	model       *model
-	sendChannel chan UpdateMessage
+	allPeers    []*shared.Peer
+	model       *model.Model
+	sendChannel chan shared.UpdateMessage
 	stop        chan bool
 	wg          sync.WaitGroup
 }
@@ -59,7 +61,7 @@ TODO: fetches model from other peers and syncs (this is for manual sync)
 func (t *Tinzenite) SyncRemote() error {
 	// iterate over all known peers
 	//the following can be parallelized!
-	msg := createRequestMessage(ReModel, "")
+	msg := shared.CreateRequestMessage(shared.ReModel, "")
 	t.sendAll(msg.String())
 	/*TODO implement model detection on receive? Not here, I guess?*/
 	return nil
@@ -99,7 +101,7 @@ func (t *Tinzenite) Store() error {
 	}
 	// write all peers to files
 	for _, peer := range t.allPeers {
-		err := peer.store(t.Path)
+		err := peer.Store(t.Path)
 		if err != nil {
 			return err
 		}
@@ -109,10 +111,10 @@ func (t *Tinzenite) Store() error {
 	if err != nil {
 		return err
 	}
-	toxPeerDump := &toxPeerDump{
+	toxPeerDump := &shared.ToxPeerDump{
 		SelfPeer: t.selfpeer,
 		ToxData:  toxData}
-	err = toxPeerDump.store(t.Path)
+	err = toxPeerDump.Store(t.Path)
 	if err != nil {
 		return err
 	}
@@ -122,7 +124,7 @@ func (t *Tinzenite) Store() error {
 		return err
 	}
 	// update model for tinzenite dir to catch above stores
-	err = t.model.PartialUpdate(t.Path + "/" + TINZENITEDIR)
+	err = t.model.PartialUpdate(t.Path + "/" + shared.TINZENITEDIR)
 	if err != nil {
 		return err
 	}
@@ -174,8 +176,8 @@ Merge an update message to the local model.
 TODO: with move implemented one of the merged file copies can be kept and simply
 renamed, also solving the ID problem. Look into this!
 */
-func (t *Tinzenite) merge(msg *UpdateMessage) error {
-	relPath := createPath(t.Path, msg.Object.Path)
+func (t *Tinzenite) merge(msg *shared.UpdateMessage) error {
+	relPath := shared.CreatePath(t.Path, msg.Object.Path)
 	// first: apply local changes to model (this is why writing PartialUpdate was no waste of time, isn't this cool?! :D)
 	err := t.model.PartialUpdate(relPath.FullPath())
 	if err != nil {
@@ -192,29 +194,29 @@ func (t *Tinzenite) merge(msg *UpdateMessage) error {
 		return err
 	}
 	// third: remove original
-	err = t.model.applyRemove(relPath, nil)
+	err = t.model.ApplyRemove(relPath, nil)
 	if err != nil {
 		return err
 	}
 	// fourth: change path and apply remote as create
-	msg.Operation = OpCreate
-	msg.Object.Path = relPath.Subpath() + REMOTE
+	msg.Operation = shared.OpCreate
+	msg.Object.Path = relPath.SubPath() + REMOTE
 	msg.Object.Name = relPath.LastElement() + REMOTE
 	/*TODO what of the id? For now to be sure: new one.*/
 	oldID := msg.Object.Identification
-	msg.Object.Identification, err = newIdentifier()
+	msg.Object.Identification, err = shared.NewIdentifier()
 	if err != nil {
 		return err
 	}
 	// new id --> rename temp file
-	tempPath := t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
+	tempPath := t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR
 	err = os.Rename(tempPath+"/"+oldID, tempPath+"/"+msg.Object.Identification)
 	if err != nil {
 		log.Println("Updating remote object file failed!")
 		return err
 	}
 	// fifth: create remote file
-	err = t.model.applyCreate(relPath.Apply(relPath.FullPath()+REMOTE), &msg.Object)
+	err = t.model.ApplyCreate(relPath.Apply(relPath.FullPath()+REMOTE), &msg.Object)
 	if err != nil {
 		return err
 	}
@@ -232,12 +234,12 @@ func (t *Tinzenite) storeGlobalConfig() error {
 		return err
 	}
 	path := user.HomeDir + "/.config/tinzenite"
-	err = makeDirectory(path)
+	err = shared.MakeDirectory(path)
 	if err != nil {
 		return err
 	}
-	path += "/" + DIRECTORYLIST
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, FILEPERMISSIONMODE)
+	path += "/" + shared.DIRECTORYLIST
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, shared.FILEPERMISSIONMODE)
 	if err != nil {
 		return err
 	}
@@ -248,7 +250,7 @@ func (t *Tinzenite) storeGlobalConfig() error {
 		return err
 	}
 	// ensure that the file is valid
-	return PrettifyDirectoryList()
+	return shared.PrettifyDirectoryList()
 }
 
 /*
@@ -256,14 +258,14 @@ makeDotTinzenite creates the directory structure for the .tinzenite directory
 including the .tinignore file required for it.
 */
 func (t *Tinzenite) makeDotTinzenite() error {
-	root := t.Path + "/" + TINZENITEDIR
+	root := t.Path + "/" + shared.TINZENITEDIR
 	// build directory structure
-	err := makeDirectories(root, ORGDIR+"/"+PEERSDIR, TEMPDIR, REMOVEDIR, LOCALDIR, RECEIVINGDIR)
+	err := shared.MakeDirectories(root, shared.ORGDIR+"/"+shared.PEERSDIR, shared.TEMPDIR, shared.REMOVEDIR, shared.LOCALDIR, shared.RECEIVINGDIR)
 	if err != nil {
 		return err
 	}
 	// write required .tinignore file
-	return ioutil.WriteFile(root+"/"+TINIGNORE, []byte(TINDIRIGNORE), FILEPERMISSIONMODE)
+	return ioutil.WriteFile(root+"/"+shared.TINIGNORE, []byte(TINDIRIGNORE), shared.FILEPERMISSIONMODE)
 }
 
 /*
@@ -273,7 +275,7 @@ func (t *Tinzenite) initialize() {
 	// prepare send channel that will distribute updates
 	t.wg.Add(1)
 	t.stop = make(chan bool, 1)
-	t.sendChannel = make(chan UpdateMessage, 1)
+	t.sendChannel = make(chan shared.UpdateMessage, 1)
 	go t.background()
 	t.model.Register(t.sendChannel)
 }

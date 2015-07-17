@@ -4,6 +4,8 @@ import (
 	"os"
 
 	"github.com/tinzenite/channel"
+	"github.com/tinzenite/model"
+	"github.com/tinzenite/shared"
 )
 
 /*
@@ -11,8 +13,8 @@ CreateTinzenite makes a directory a new Tinzenite directory. Will return error
 if already so.
 */
 func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Tinzenite, error) {
-	if IsTinzenite(dirpath) {
-		return nil, ErrIsTinzenite
+	if shared.IsTinzenite(dirpath) {
+		return nil, shared.ErrIsTinzenite
 	}
 	// get auth data
 	auth, err := createAuthentication(dirpath, dirname, username, password)
@@ -36,24 +38,24 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 	if err != nil {
 		return nil, err
 	}
-	peerhash, err := newIdentifier()
+	peerhash, err := shared.NewIdentifier()
 	if err != nil {
 		return nil, err
 	}
-	peer := &Peer{
+	peer := &shared.Peer{
 		Name:           peername,
 		Address:        address,
-		Protocol:       CmTox,
+		Protocol:       shared.CmTox,
 		Identification: peerhash}
 	tinzenite.selfpeer = peer
-	tinzenite.allPeers = []*Peer{peer}
+	tinzenite.allPeers = []*shared.Peer{peer}
 	// make .tinzenite so that model can work
 	err = tinzenite.makeDotTinzenite()
 	if err != nil {
 		return nil, err
 	}
 	// build model (can block for long!)
-	m, err := createModel(dirpath, peer.Identification)
+	m, err := model.CreateModel(dirpath, peer.Identification)
 	if err != nil {
 		RemoveTinzenite(dirpath)
 		return nil, err
@@ -80,8 +82,8 @@ LoadTinzenite will try to load the given directory path as a Tinzenite directory
 If not one it won't work: use CreateTinzenite to create a new peer.
 */
 func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
-	if !IsTinzenite(dirpath) {
-		return nil, ErrNotTinzenite
+	if !shared.IsTinzenite(dirpath) {
+		return nil, shared.ErrNotTinzenite
 	}
 	t := &Tinzenite{Path: dirpath}
 	// load auth
@@ -91,19 +93,19 @@ func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
 	}
 	t.auth = auth
 	// load model
-	model, err := loadModel(dirpath)
+	model, err := model.LoadModel(dirpath)
 	if err != nil {
 		return nil, err
 	}
 	t.model = model
 	// load peer list
-	peers, err := loadPeers(dirpath)
+	peers, err := shared.LoadPeers(dirpath)
 	if err != nil {
 		return nil, err
 	}
 	t.allPeers = peers
 	// load tox dump
-	selfToxDump, err := loadToxDump(dirpath)
+	selfToxDump, err := shared.LoadToxDump(dirpath)
 	if err != nil {
 		return nil, err
 	}
@@ -125,9 +127,9 @@ RemoveTinzenite directory. Specifically leaves all user files but removes all
 Tinzenite specific items.
 */
 func RemoveTinzenite(path string) error {
-	if !IsTinzenite(path) {
-		return ErrNotTinzenite
+	if !shared.IsTinzenite(path) {
+		return shared.ErrNotTinzenite
 	}
 	/* TODO remove from directory list*/
-	return os.RemoveAll(path + "/" + TINZENITEDIR)
+	return os.RemoveAll(path + "/" + shared.TINZENITEDIR)
 }

@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"strings"
+
+	"github.com/tinzenite/shared"
 )
 
 /*
@@ -28,15 +30,15 @@ func createChannelInterface(t *Tinzenite) *chaninterface {
 		tin:       t,
 		transfers: make(map[string]transfer),
 		active:    make(map[string]bool),
-		recpath:   t.Path + "/" + TINZENITEDIR + "/" + RECEIVINGDIR,
-		temppath:  t.Path + "/" + TINZENITEDIR + "/" + TEMPDIR}
+		recpath:   t.Path + "/" + shared.TINZENITEDIR + "/" + shared.RECEIVINGDIR,
+		temppath:  t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR}
 }
 
 type transfer struct {
 	// peers stores the addresses of all known peers that have the file update
 	peers []string
 	// the message to apply once the file has been received
-	success UpdateMessage
+	success shared.UpdateMessage
 }
 
 /*
@@ -44,7 +46,7 @@ RequestFileTransfer is to be called by Tinzenite to authorize a file transfer
 and to store what is to be done once it is successful. Handles multiplexing of
 transfers as well. NOTE: Not a callback method.
 */
-func (c *chaninterface) RequestFileTransfer(address string, um UpdateMessage) {
+func (c *chaninterface) RequestFileTransfer(address string, um shared.UpdateMessage) {
 	ident := um.Object.Identification
 	if tran, exists := c.transfers[ident]; exists {
 		// check if we need to update updatemessage
@@ -68,7 +70,7 @@ func (c *chaninterface) RequestFileTransfer(address string, um UpdateMessage) {
 	c.transfers[ident] = tran
 	/*TODO send request to only one underutilized peer at once*/
 	// FOR NOW: just get it from whomever send the update
-	reqMsg := createRequestMessage(ReObject, ident)
+	reqMsg := shared.CreateRequestMessage(shared.ReObject, ident)
 	c.tin.channel.Send(address, reqMsg.String())
 }
 
@@ -82,7 +84,7 @@ func (c *chaninterface) OnAllowFile(address, identification string) (bool, strin
 		log.Println("Transfer not authorized!")
 		return false, ""
 	}
-	if !contains(tran.peers, address) {
+	if !shared.Contains(tran.peers, address) {
 		log.Println("Peer not authorized for transfer!")
 		return false, ""
 	}
@@ -147,12 +149,12 @@ func (c *chaninterface) OnNewConnection(address, message string) {
 	}
 	/*TODO actually this should be read from disk once the peer has synced... oO
 	Correction: read from message other peer info */
-	newID, _ := newIdentifier()
-	c.tin.allPeers = append(c.tin.allPeers, &Peer{
+	newID, _ := shared.NewIdentifier()
+	c.tin.allPeers = append(c.tin.allPeers, &shared.Peer{
 		Identification: newID,   // must be read from message
 		Name:           message, // must be read from message
 		Address:        address,
-		Protocol:       CmTox})
+		Protocol:       shared.CmTox})
 	// actually we just want to get type and confidence from the user here, and if everything
 	// is okay we accept the connection --> then what? need to bootstrap him...
 }
@@ -162,29 +164,29 @@ CallbackMessage is called when a message is received.
 */
 func (c *chaninterface) OnMessage(address, message string) {
 	// find out type of message
-	v := &Message{}
+	v := &shared.Message{}
 	err := json.Unmarshal([]byte(message), v)
 	if err == nil {
 		switch msgType := v.Type; msgType {
-		case MsgUpdate:
-			msg := &UpdateMessage{}
+		case shared.MsgUpdate:
+			msg := &shared.UpdateMessage{}
 			err := json.Unmarshal([]byte(message), msg)
 			if err != nil {
 				log.Println(err.Error())
 				return
 			}
-			if op := msg.Operation; op == OpCreate || op == OpModify {
+			if op := msg.Operation; op == shared.OpCreate || op == shared.OpModify {
 				// create & modify must first fetch file
 				c.RequestFileTransfer(address, *msg)
-			} else if op == OpRemove {
+			} else if op == shared.OpRemove {
 				// remove is without file transfer, so directly apply
 				c.applyUpdateWithMerge(*msg)
 			} else {
 				log.Println("Unknown operation received, ignoring update message!")
 			}
-		case MsgRequest:
+		case shared.MsgRequest:
 			// read request message
-			msg := &RequestMessage{}
+			msg := &shared.RequestMessage{}
 			err := json.Unmarshal([]byte(message), msg)
 			if err != nil {
 				log.Println(err.Error())
@@ -197,8 +199,8 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-		case MsgModel:
-			msg := &ModelMessage{}
+		case shared.MsgModel:
+			msg := &shared.ModelMessage{}
 			err := json.Unmarshal([]byte(message), msg)
 			if err != nil {
 				log.Println(err.Error())
@@ -240,21 +242,19 @@ func (c *chaninterface) OnMessage(address, message string) {
 		// messy but works: create file correctly, create objs, then move it to the correct temp location
 		// first named create.txt to enable testing of create merge
 		os.Create(c.tin.Path + "/create.txt")
-		ioutil.WriteFile(c.tin.Path+"/create.txt", []byte("bonjour!"), FILEPERMISSIONMODE)
-		obj, _ := createObjectInfo(c.tin.Path, "create.txt", "otheridhere")
-		os.Rename(c.tin.Path+"/create.txt", c.tin.Path+"/"+TINZENITEDIR+"/"+TEMPDIR+"/"+obj.Identification)
+		ioutil.WriteFile(c.tin.Path+"/create.txt", []byte("bonjour!"), shared.FILEPERMISSIONMODE)
+		obj, _ := shared.CreateObjectInfo(c.tin.Path, "create.txt", "otheridhere")
+		os.Rename(c.tin.Path+"/create.txt", c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.TEMPDIR+"/"+obj.Identification)
 		obj.Name = "test.txt"
 		obj.Path = "test.txt"
-		msg := &UpdateMessage{
-			Operation: OpCreate,
-			Object:    *obj}
-		err := c.applyUpdateWithMerge(*msg)
+		msg := shared.CreateUpdateMessage(shared.OpCreate, *obj)
+		err := c.applyUpdateWithMerge(msg)
 		if err != nil {
 			log.Println("Create error: " + err.Error())
 		}
 	case "modify":
 		// MODIFY
-		obj, _ := createObjectInfo(c.tin.Path, "test.txt", "otheridhere")
+		obj, _ := shared.CreateObjectInfo(c.tin.Path, "test.txt", "otheridhere")
 		orig, _ := c.tin.model.Objinfo[c.tin.Path+"/test.txt"]
 		// id must be same
 		obj.Identification = orig.Identification
@@ -267,65 +267,60 @@ func (c *chaninterface) OnMessage(address, message string) {
 		}
 		// add one new version
 		obj.Version.Increase("otheridhere")
-		err := c.tin.model.ApplyUpdateMessage(&UpdateMessage{
-			Operation: OpModify,
-			Object:    *obj})
+		um := shared.CreateUpdateMessage(shared.OpModify, *obj)
+		err := c.tin.model.ApplyUpdateMessage(&um)
 		if err != nil {
 			log.Println(err.Error())
 		}
 	case "sendmodify":
-		path := c.tin.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
+		path := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR
 		orig, _ := c.tin.model.Objinfo[c.tin.Path+"/test.txt"]
 		// write change to file in temp, simulating successful download
-		ioutil.WriteFile(path+"/"+orig.Identification, []byte("send modify hello world!"), FILEPERMISSIONMODE)
+		ioutil.WriteFile(path+"/"+orig.Identification, []byte("send modify hello world!"), shared.FILEPERMISSIONMODE)
 	case "testdir":
 		// Test creation and removal of directory
-		makeDirectory(c.tin.Path + "/dirtest")
-		obj, _ := createObjectInfo(c.tin.Path, "dirtest", "dirtestpeer")
+		shared.MakeDirectory(c.tin.Path + "/dirtest")
+		obj, _ := shared.CreateObjectInfo(c.tin.Path, "dirtest", "dirtestpeer")
 		os.Remove(c.tin.Path + "/dirtest")
-		err := c.tin.model.ApplyUpdateMessage(&UpdateMessage{
-			Operation: OpCreate,
-			Object:    *obj})
+		um := shared.CreateUpdateMessage(shared.OpCreate, *obj)
+		err := c.tin.model.ApplyUpdateMessage(&um)
 		if err != nil {
 			log.Println(err.Error())
 		}
 	case "conflict":
 		// MODIFY that creates merge conflict
-		path := c.tin.Path + "/" + TINZENITEDIR + "/" + TEMPDIR
-		ioutil.WriteFile(c.tin.Path+"/merge.txt", []byte("written from conflict test"), FILEPERMISSIONMODE)
-		obj, _ := createObjectInfo(c.tin.Path, "merge.txt", "otheridhere")
+		path := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR
+		ioutil.WriteFile(c.tin.Path+"/merge.txt", []byte("written from conflict test"), shared.FILEPERMISSIONMODE)
+		obj, _ := shared.CreateObjectInfo(c.tin.Path, "merge.txt", "otheridhere")
 		os.Rename(c.tin.Path+"/merge.txt", path+"/"+obj.Identification)
 		obj.Path = "test.txt"
 		obj.Name = "test.txt"
 		obj.Version[c.tin.model.SelfID] = -1
 		obj.Version.Increase("otheridhere") // the remote change
-		msg := &UpdateMessage{
-			Operation: OpModify,
-			Object:    *obj}
-		err := c.applyUpdateWithMerge(*msg)
+		msg := shared.CreateUpdateMessage(shared.OpModify, *obj)
+		err := c.applyUpdateWithMerge(msg)
 		if err != nil {
 			log.Println("Conflict error: " + err.Error())
 		}
 	case "delete":
 		// DELETE
-		obj, err := createObjectInfo(c.tin.Path, "test.txt", "otheridhere")
+		obj, err := shared.CreateObjectInfo(c.tin.Path, "test.txt", "otheridhere")
 		if err != nil {
 			log.Println(err.Error())
 			return
 		}
 		os.Remove(c.tin.Path + "/test.txt")
-		c.tin.model.ApplyUpdateMessage(&UpdateMessage{
-			Operation: OpRemove,
-			Object:    *obj})
+		um := shared.CreateUpdateMessage(shared.OpRemove, *obj)
+		c.tin.model.ApplyUpdateMessage(&um)
 		/*TODO implement remove merge conflict!*/
 	case "showupdate":
 		// helpful command that creates a model update message so that I can test it
-		obj, _ := c.tin.model.getInfo(createPath(c.tin.Path, "test.txt"))
-		mm := createModelMessage(*obj)
+		obj, _ := c.tin.model.GetInfo(shared.CreatePath(c.tin.Path, "test.txt"))
+		mm := shared.CreateModelMessage(*obj)
 		c.tin.send(address, mm.String())
 	case "showrequest":
-		obj, _ := c.tin.model.getInfo(createPath(c.tin.Path, "Damned Society - Sunny on Sunday.mp3"))
-		rm := createRequestMessage(ReObject, obj.Identification)
+		obj, _ := c.tin.model.GetInfo(shared.CreatePath(c.tin.Path, "Damned Society - Sunny on Sunday.mp3"))
+		rm := shared.CreateRequestMessage(shared.ReObject, obj.Identification)
 		c.tin.send(address, rm.String())
 	default:
 		c.tin.channel.Send(address, "ACK")
@@ -336,9 +331,9 @@ func (c *chaninterface) OnMessage(address, message string) {
 applyUpdateWithMerge does exactly that. First it tries to apply the update. If it
 fails with a merge a merge is done.
 */
-func (c *chaninterface) applyUpdateWithMerge(msg UpdateMessage) error {
+func (c *chaninterface) applyUpdateWithMerge(msg shared.UpdateMessage) error {
 	err := c.tin.model.ApplyUpdateMessage(&msg)
-	if err == errConflict {
+	if err == shared.ErrConflict {
 		err := c.tin.merge(&msg)
 		if err != nil {
 			return err
