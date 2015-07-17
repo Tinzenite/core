@@ -18,16 +18,17 @@ import (
 Tinzenite is the struct on which all important operations should be called.
 */
 type Tinzenite struct {
-	Path        string
-	auth        *Authentication
-	selfpeer    *shared.Peer
-	channel     *channel.Channel
-	cInterface  *chaninterface
-	allPeers    []*shared.Peer
-	model       *model.Model
-	sendChannel chan shared.UpdateMessage
-	stop        chan bool
-	wg          sync.WaitGroup
+	Path           string
+	auth           *Authentication
+	selfpeer       *shared.Peer
+	channel        *channel.Channel
+	cInterface     *chaninterface
+	allPeers       []*shared.Peer
+	model          *model.Model
+	sendChannel    chan shared.UpdateMessage
+	stop           chan bool
+	wg             sync.WaitGroup
+	peerValidation PeerValidation
 }
 
 /*

@@ -141,22 +141,40 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 CallbackNewConnection is called when a new connection request comes in.
 */
 func (c *chaninterface) OnNewConnection(address, message string) {
-	log.Printf("New connection from <%s> with message <%s>\n", address, message)
-	err := c.tin.channel.AcceptConnection(address)
-	if err != nil {
-		log.Println(err.Error())
+	if c.tin.peerValidation == nil {
+		log.Println("PeerValidation() callback is unimplemented, can not connect!")
 		return
 	}
-	/*TODO actually this should be read from disk once the peer has synced... oO
-	Correction: read from message other peer info */
-	newID, _ := shared.NewIdentifier()
-	c.tin.allPeers = append(c.tin.allPeers, &shared.Peer{
-		Identification: newID,   // must be read from message
-		Name:           message, // must be read from message
-		Address:        address,
-		Protocol:       shared.CmTox})
-	// actually we just want to get type and confidence from the user here, and if everything
-	// is okay we accept the connection --> then what? need to bootstrap him...
+	// trusted peer flag
+	var trusted bool
+	// try to read peer from message
+	peer := &shared.Peer{}
+	err := json.Unmarshal([]byte(message), *peer)
+	if err != nil {
+		// this may happen for debug purposes etc
+		peer = nil
+		trusted = false
+	} else {
+		trusted = true
+	}
+	// check if allowed
+	/*TODO peer.trusted should be used to ensure that all is okay. For now all are trusted by default until encryption is implemented.*/
+	if !c.tin.peerValidation(address, trusted) {
+		log.Println("Refusing connection.")
+		return
+	}
+	// if yes, add connection
+	err = c.tin.channel.AcceptConnection(address)
+	if err != nil {
+		log.Println("Channel:", err)
+		return
+	}
+	if peer == nil {
+		log.Println("No legal peer information could be read! Peer will be considered passive.")
+		return
+	}
+	// add peer to local list
+	c.tin.allPeers = append(c.tin.allPeers, peer)
 }
 
 /*
