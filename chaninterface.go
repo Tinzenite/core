@@ -183,9 +183,20 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println("Unknown operation received, ignoring update message!")
 			}
 		case MsgRequest:
-			log.Println("Request received!")
-			c.tin.channel.Send(address, "Sending File (TODO)")
-			/* TODO implement sending of file*/
+			// read request message
+			msg := &RequestMessage{}
+			err := json.Unmarshal([]byte(message), msg)
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
+			// get path
+			/*TODO*/
+			err = c.tin.channel.SendFile(address, c.tin.Path+"/Damned Society - Sunny on Sunday.mp3", msg.Identification)
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
 		case MsgModel:
 			msg := &ModelMessage{}
 			err := json.Unmarshal([]byte(message), msg)
@@ -307,16 +318,15 @@ func (c *chaninterface) OnMessage(address, message string) {
 			Operation: OpRemove,
 			Object:    *obj})
 		/*TODO implement remove merge conflict!*/
-	case "show":
+	case "showupdate":
 		// helpful command that creates a model update message so that I can test it
 		obj, _ := c.tin.model.getInfo(createPath(c.tin.Path, "test.txt"))
 		mm := createModelMessage(*obj)
 		c.tin.send(address, mm.String())
-	case "send":
-		err := c.tin.channel.SendFile("ed284a9fa07142cb8f6fa8c821d7f722cf63d2c7f74390566c6949bdb898b33e", []byte("Test file contents... :P"))
-		if err != nil {
-			log.Println("Error sending file: " + err.Error())
-		}
+	case "showrequest":
+		obj, _ := c.tin.model.getInfo(createPath(c.tin.Path, "Damned Society - Sunny on Sunday.mp3"))
+		rm := createRequestMessage(ReObject, obj.Identification)
+		c.tin.send(address, rm.String())
 	default:
 		c.tin.channel.Send(address, "ACK")
 	}

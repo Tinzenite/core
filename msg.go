@@ -41,16 +41,16 @@ RequestMessage is used to trigger the sending of messages or files from other
 peers.
 */
 type RequestMessage struct {
-	Type    MsgType
-	Request Request
-	Object  string
+	Type           MsgType
+	Request        Request
+	Identification string
 }
 
 func createRequestMessage(req Request, identification string) RequestMessage {
 	return RequestMessage{
-		Type:    MsgRequest,
-		Request: req,
-		Object:  identification}
+		Type:           MsgRequest,
+		Request:        req,
+		Identification: identification}
 }
 
 func (rm *RequestMessage) String() string {
