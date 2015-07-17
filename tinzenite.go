@@ -141,6 +141,7 @@ func (t *Tinzenite) Connect(address string) error {
 	if err != nil {
 		return err
 	}
+	/*TODO need to store other's peer object sometime... when?!*/
 	return t.channel.RequestConnection(address, string(msg))
 }
 
@@ -155,7 +156,7 @@ func (t *Tinzenite) sendAll(msg string) {
 		/*TODO - also make this concurrent?*/
 		err := t.channel.Send(peer.Address, msg)
 		if err != nil {
-			log.Println(err.Error())
+			log.Println(err.Error(), peer.Address)
 		}
 		// if online -> continue
 		// if not init -> init

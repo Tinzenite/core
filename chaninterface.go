@@ -149,11 +149,12 @@ func (c *chaninterface) OnNewConnection(address, message string) {
 	var trusted bool
 	// try to read peer from message
 	peer := &shared.Peer{}
-	err := json.Unmarshal([]byte(message), *peer)
+	err := json.Unmarshal([]byte(message), peer)
 	if err != nil {
 		// this may happen for debug purposes etc
 		peer = nil
 		trusted = false
+		log.Println(err, "received", message)
 	} else {
 		trusted = true
 	}
@@ -345,6 +346,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 		rm := shared.CreateRequestMessage(shared.ReObject, obj.Identification)
 		c.tin.send(address, rm.String())
 	default:
+		log.Println("Received", message)
 		c.tin.channel.Send(address, "ACK")
 	}
 }
