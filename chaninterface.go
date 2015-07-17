@@ -192,9 +192,13 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-			// get path
-			/*TODO*/
-			err = c.tin.channel.SendFile(address, c.tin.Path+"/Damned Society - Sunny on Sunday.mp3", msg.Identification)
+			// get full path from model
+			path, err := c.tin.model.FilePath(msg.Identification)
+			if err != nil {
+				log.Println("Model: ", err)
+				return
+			}
+			err = c.tin.channel.SendFile(address, path, msg.Identification)
 			if err != nil {
 				log.Println(err.Error())
 				return
@@ -255,7 +259,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 	case "modify":
 		// MODIFY
 		obj, _ := shared.CreateObjectInfo(c.tin.Path, "test.txt", "otheridhere")
-		orig, _ := c.tin.model.Objinfo[c.tin.Path+"/test.txt"]
+		orig, _ := c.tin.model.StaticInfos[c.tin.Path+"/test.txt"]
 		// id must be same
 		obj.Identification = orig.Identification
 		// version apply so that we can always "update" it
@@ -274,7 +278,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 		}
 	case "sendmodify":
 		path := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR
-		orig, _ := c.tin.model.Objinfo[c.tin.Path+"/test.txt"]
+		orig, _ := c.tin.model.StaticInfos[c.tin.Path+"/test.txt"]
 		// write change to file in temp, simulating successful download
 		ioutil.WriteFile(path+"/"+orig.Identification, []byte("send modify hello world!"), shared.FILEPERMISSIONMODE)
 	case "testdir":
