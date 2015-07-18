@@ -23,6 +23,8 @@ type chaninterface struct {
 	active   map[string]bool
 	recpath  string
 	temppath string
+	// stores address of peers we need to bootstrap
+	bootstrap map[string]bool
 }
 
 func createChannelInterface(t *Tinzenite) *chaninterface {
@@ -31,7 +33,8 @@ func createChannelInterface(t *Tinzenite) *chaninterface {
 		transfers: make(map[string]transfer),
 		active:    make(map[string]bool),
 		recpath:   t.Path + "/" + shared.TINZENITEDIR + "/" + shared.RECEIVINGDIR,
-		temppath:  t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR}
+		temppath:  t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR,
+		bootstrap: make(map[string]bool)}
 }
 
 type transfer struct {
@@ -42,11 +45,11 @@ type transfer struct {
 }
 
 /*
-RequestFileTransfer is to be called by Tinzenite to authorize a file transfer
+RequestFile is to be called by Tinzenite to authorize a file transfer
 and to store what is to be done once it is successful. Handles multiplexing of
 transfers as well. NOTE: Not a callback method.
 */
-func (c *chaninterface) RequestFileTransfer(address string, um shared.UpdateMessage) {
+func (c *chaninterface) FetchAttachedFile(address string, um shared.UpdateMessage) {
 	ident := um.Object.Identification
 	if tran, exists := c.transfers[ident]; exists {
 		// check if we need to update updatemessage
@@ -179,6 +182,24 @@ func (c *chaninterface) OnNewConnection(address, message string) {
 	peer.Address = address
 	// add peer to local list
 	c.tin.allPeers = append(c.tin.allPeers, peer)
+	// notify that on connection we will need to bootstrap the peer
+	c.bootstrap[address] = true
+}
+
+/*
+OnConnected is called when a peer comes online. We check whether it requires
+bootstrapping, if not we do nothing.
+*/
+func (c *chaninterface) OnConnected(address string) {
+	_, exists := c.bootstrap[address]
+	if !exists {
+		// nope, doesn't need bootstrap
+		return
+	}
+	// initiate file transfer for peer obj
+	rm := shared.CreateRequestMessage(shared.RePeer, "")
+	c.tin.channel.Send(address, rm.String())
+	// what happens: other peer sends update message as if new file, resulting in the peer being created
 }
 
 /*
@@ -197,15 +218,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-			if op := msg.Operation; op == shared.OpCreate || op == shared.OpModify {
-				// create & modify must first fetch file
-				c.RequestFileTransfer(address, *msg)
-			} else if op == shared.OpRemove {
-				// remove is without file transfer, so directly apply
-				c.applyUpdateWithMerge(*msg)
-			} else {
-				log.Println("Unknown operation received, ignoring update message!")
-			}
+			c.onUpdateMessage(address, *msg)
 		case shared.MsgRequest:
 			// read request message
 			msg := &shared.RequestMessage{}
@@ -214,17 +227,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-			// get full path from model
-			path, err := c.tin.model.FilePath(msg.Identification)
-			if err != nil {
-				log.Println("Model: ", err)
-				return
-			}
-			err = c.tin.channel.SendFile(address, path, msg.Identification)
-			if err != nil {
-				log.Println(err.Error())
-				return
-			}
+			c.onRequestMessage(address, *msg)
 		case shared.MsgModel:
 			msg := &shared.ModelMessage{}
 			err := json.Unmarshal([]byte(message), msg)
@@ -232,19 +235,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-			// create updatemessage
-			um, err := c.tin.model.SyncObject(&msg.Object)
-			if err != nil {
-				log.Println(err.Error())
-				return
-			}
-			// if nil we don't need to do anything --> no update necessary
-			if um == nil {
-				log.Println("Nothing to do for object!")
-				return
-			}
-			// send request for object
-			c.RequestFileTransfer(address, *um)
+			c.onModelMessage(address, *msg)
 		default:
 			log.Printf("Unknown object sent: %s!\n", msgType)
 		}
@@ -352,6 +343,47 @@ func (c *chaninterface) OnMessage(address, message string) {
 		log.Println("Received", message)
 		c.tin.channel.Send(address, "ACK")
 	}
+}
+
+func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage) {
+	if op := msg.Operation; op == shared.OpCreate || op == shared.OpModify {
+		// create & modify must first fetch file
+		c.FetchAttachedFile(address, msg)
+	} else if op == shared.OpRemove {
+		// remove is without file transfer, so directly apply
+		c.applyUpdateWithMerge(msg)
+	} else {
+		log.Println("Unknown operation received, ignoring update message!")
+	}
+}
+
+func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessage) {
+	// get full path from model
+	path, err := c.tin.model.FilePath(msg.Identification)
+	if err != nil {
+		log.Println("Model: ", err)
+		return
+	}
+	err = c.tin.channel.SendFile(address, path, msg.Identification)
+	if err != nil {
+		log.Println(err.Error())
+	}
+}
+
+func (c *chaninterface) onModelMessage(address string, msg shared.ModelMessage) {
+	// create updatemessage
+	um, err := c.tin.model.SyncObject(&msg.Object)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+	// if nil we don't need to do anything --> no update necessary
+	if um == nil {
+		log.Println("Nothing to do for object!")
+		return
+	}
+	// send request for object
+	c.FetchAttachedFile(address, *um)
 }
 
 /*
