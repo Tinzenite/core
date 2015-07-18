@@ -117,7 +117,7 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 		log.Println("Transfer doesn't even exist anymore! Something bad went wrong...")
 		// remove from transfers
 		delete(c.transfers, identification)
-		/*TODO remove any broken remaining temp files*/
+		// remove any broken remaining temp files
 		err := os.Remove(c.recpath + "/" + filename)
 		if err != nil {
 			log.Println("Failed to remove broken transfer file: " + err.Error())
@@ -130,6 +130,7 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 		log.Println("Failed to move file to temp: " + err.Error())
 		return
 	}
+	// apply
 	err = c.applyUpdateWithMerge(tran.success)
 	if err != nil {
 		log.Println("File application error: " + err.Error())
@@ -154,7 +155,7 @@ func (c *chaninterface) OnNewConnection(address, message string) {
 		// this may happen for debug purposes etc
 		peer = nil
 		trusted = false
-		log.Println(err, "received", message)
+		log.Println("Received non JSON message:", message)
 	} else {
 		trusted = true
 	}
@@ -174,6 +175,8 @@ func (c *chaninterface) OnNewConnection(address, message string) {
 		log.Println("No legal peer information could be read! Peer will be considered passive.")
 		return
 	}
+	// ensure that address is correct by overwritting sent address with real one
+	peer.Address = address
 	// add peer to local list
 	c.tin.allPeers = append(c.tin.allPeers, peer)
 }
