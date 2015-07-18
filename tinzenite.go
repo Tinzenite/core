@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/json"
 	"io/ioutil"
 	"log"
 	"os"
@@ -137,12 +136,7 @@ func (t *Tinzenite) Store() error {
 Connect this tinzenite to another peer, beginning the bootstrap process.
 */
 func (t *Tinzenite) Connect(address string) error {
-	msg, err := json.Marshal(t.selfpeer)
-	if err != nil {
-		return err
-	}
-	/*TODO need to store other's peer object sometime... when?!*/
-	return t.channel.RequestConnection(address, string(msg))
+	return t.cInterface.Connect(address)
 }
 
 /*

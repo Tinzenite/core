@@ -49,8 +49,9 @@ RequestFile is to be called by Tinzenite to authorize a file transfer
 and to store what is to be done once it is successful. Handles multiplexing of
 transfers as well. NOTE: Not a callback method.
 */
-func (c *chaninterface) FetchAttachedFile(address string, um shared.UpdateMessage) {
+func (c *chaninterface) fetchAttachedFile(address string, um shared.UpdateMessage) {
 	ident := um.Object.Identification
+	log.Println("Ident:", ident)
 	if tran, exists := c.transfers[ident]; exists {
 		// check if we need to update updatemessage
 		oldVersion := tran.success.Object.Version
@@ -78,13 +79,30 @@ func (c *chaninterface) FetchAttachedFile(address string, um shared.UpdateMessag
 }
 
 /*
+Connect sends a connection request and prepares for bootstrapping. NOTE: Not a
+callback method.
+*/
+func (c *chaninterface) Connect(address string) error {
+	// notify that on connection we will need to bootstrap the peer
+	c.bootstrap[c.tin.channel.FormatAddress(address)] = true
+	// send own peer
+	msg, err := json.Marshal(c.tin.selfpeer)
+	if err != nil {
+		return err
+	}
+	return c.tin.channel.RequestConnection(address, string(msg))
+}
+
+// -------------------------CALLBACKS-------------------------------------------
+
+/*
 OnAllowFile is the callback that checks whether the transfer is to be accepted or
 not. Checks the address and identification of the object against c.transfers.
 */
 func (c *chaninterface) OnAllowFile(address, identification string) (bool, string) {
 	tran, exists := c.transfers[identification]
 	if !exists {
-		log.Println("Transfer not authorized!")
+		log.Println("Transfer not authorized for", identification, "!")
 		return false, ""
 	}
 	if !shared.Contains(tran.peers, address) {
@@ -182,8 +200,6 @@ func (c *chaninterface) OnNewConnection(address, message string) {
 	peer.Address = address
 	// add peer to local list
 	c.tin.allPeers = append(c.tin.allPeers, peer)
-	// notify that on connection we will need to bootstrap the peer
-	c.bootstrap[address] = true
 }
 
 /*
@@ -191,9 +207,14 @@ OnConnected is called when a peer comes online. We check whether it requires
 bootstrapping, if not we do nothing.
 */
 func (c *chaninterface) OnConnected(address string) {
-	_, exists := c.bootstrap[address]
+	_, exists := c.bootstrap[c.tin.channel.FormatAddress(address)]
 	if !exists {
+		log.Println("Missing:", address)
 		// nope, doesn't need bootstrap
+		/*TODO HERE THIS IS IMPORTANT TODO somewhy we run into this... :P */
+		for add := range c.bootstrap {
+			log.Println("Awaiting", add)
+		}
 		return
 	}
 	// initiate file transfer for peer obj
@@ -339,6 +360,21 @@ func (c *chaninterface) OnMessage(address, message string) {
 		obj, _ := c.tin.model.GetInfo(shared.CreatePath(c.tin.Path, "Damned Society - Sunny on Sunday.mp3"))
 		rm := shared.CreateRequestMessage(shared.ReObject, obj.Identification)
 		c.tin.send(address, rm.String())
+	case "showpeerupdate":
+		/*NOTE: Will only work as long as that peer file exists. For bootstrap testing only!*/
+		/*TODO: file name != ident... how do I fix this?*/
+		fullPath := shared.CreatePath(c.tin.model.Root, "58f9432a9540f536.json")
+		obj, err := c.tin.model.GetInfo(fullPath)
+		if err != nil {
+			log.Println("Model:", err)
+			return
+		}
+		// update path to point correctly
+		obj.Path = shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR + "/" + obj.Name
+		// random identifier (would oc actually be real one, but for now...)
+		obj.Identification, _ = shared.NewIdentifier()
+		um := shared.CreateUpdateMessage(shared.OpCreate, *obj)
+		c.tin.channel.Send(address, um.String())
 	default:
 		log.Println("Received", message)
 		c.tin.channel.Send(address, "ACK")
@@ -348,7 +384,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage) {
 	if op := msg.Operation; op == shared.OpCreate || op == shared.OpModify {
 		// create & modify must first fetch file
-		c.FetchAttachedFile(address, msg)
+		c.fetchAttachedFile(address, msg)
 	} else if op == shared.OpRemove {
 		// remove is without file transfer, so directly apply
 		c.applyUpdateWithMerge(msg)
@@ -358,6 +394,21 @@ func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage
 }
 
 func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessage) {
+	// this means we need to send our selfpeer
+	if msg.Request == shared.RePeer {
+		// so build a bogus update message and send that
+		peerPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR + "/" + c.tin.selfpeer.Identification + shared.ENDING
+		fullPath := shared.CreatePath(c.tin.model.Root, peerPath)
+		obj, err := c.tin.model.GetInfo(fullPath)
+		if err != nil {
+			log.Println("Model:", err)
+			return
+		}
+		/*TODO maybe this should be modify?*/
+		um := shared.CreateUpdateMessage(shared.OpCreate, *obj)
+		c.tin.channel.Send(address, um.String())
+		return
+	}
 	// get full path from model
 	path, err := c.tin.model.FilePath(msg.Identification)
 	if err != nil {
@@ -383,7 +434,7 @@ func (c *chaninterface) onModelMessage(address string, msg shared.ModelMessage) 
 		return
 	}
 	// send request for object
-	c.FetchAttachedFile(address, *um)
+	c.fetchAttachedFile(address, *um)
 }
 
 /*
