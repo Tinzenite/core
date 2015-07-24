@@ -84,7 +84,9 @@ callback method.
 */
 func (c *chaninterface) Connect(address string) error {
 	// notify that on connection we will need to bootstrap the peer
+	log.Println("Adding to bootstrap list")
 	c.bootstrap[c.tin.channel.FormatAddress(address)] = true
+	c.printBootstrap()
 	// send own peer
 	msg, err := json.Marshal(c.tin.selfpeer)
 	if err != nil {
@@ -200,6 +202,8 @@ func (c *chaninterface) OnNewConnection(address, message string) {
 	peer.Address = address
 	// add peer to local list
 	c.tin.allPeers = append(c.tin.allPeers, peer)
+	log.Println("MAYBE add peer to bootstrap here?")
+	/*TODO c.tin.store? peer needs to be written to disk for sync...*/
 }
 
 /*
@@ -211,12 +215,10 @@ func (c *chaninterface) OnConnected(address string) {
 	if !exists {
 		log.Println("Missing:", address)
 		// nope, doesn't need bootstrap
-		/*TODO HERE THIS IS IMPORTANT TODO somewhy we run into this... :P */
-		for add := range c.bootstrap {
-			log.Println("Awaiting", add)
-		}
+		c.printBootstrap()
 		return
 	}
+	log.Println("SUCCESS??")
 	// initiate file transfer for peer obj
 	rm := shared.CreateRequestMessage(shared.RePeer, "")
 	c.tin.channel.Send(address, rm.String())
@@ -450,4 +452,12 @@ func (c *chaninterface) applyUpdateWithMerge(msg shared.UpdateMessage) error {
 		}
 	}
 	return nil
+}
+
+func (c *chaninterface) printBootstrap() {
+	log.Println("START----------------------")
+	for value := range c.bootstrap {
+		log.Println("Have:", value)
+	}
+	log.Println("END------------------------")
 }
