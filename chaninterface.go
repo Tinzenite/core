@@ -28,13 +28,25 @@ type chaninterface struct {
 }
 
 func createChannelInterface(t *Tinzenite) *chaninterface {
+	tempList := make(map[string]bool)
+	path := t.Path + "/" + shared.TINZENITEDIR + "/" + shared.LOCALDIR + "/" + shared.BOOTJSON
+	_, err := os.Lstat(path)
+	if err == nil {
+		data, err := ioutil.ReadFile(path)
+		if err == nil {
+			err := json.Unmarshal(data, &tempList)
+			if err != nil {
+				log.Println("Load:", err)
+			}
+		}
+	}
 	return &chaninterface{
 		tin:       t,
 		transfers: make(map[string]transfer),
 		active:    make(map[string]bool),
 		recpath:   t.Path + "/" + shared.TINZENITEDIR + "/" + shared.RECEIVINGDIR,
 		temppath:  t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR,
-		bootstrap: make(map[string]bool)}
+		bootstrap: tempList}
 }
 
 type transfer struct {
@@ -42,6 +54,17 @@ type transfer struct {
 	peers []string
 	// the message to apply once the file has been received
 	success shared.UpdateMessage
+}
+
+/*
+Store saves the bootstrap list so that it remains active over disconnects.
+*/
+func (c *chaninterface) Store(root string) error {
+	data, err := json.MarshalIndent(c.bootstrap, "", "  ")
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(root+"/"+shared.TINZENITEDIR+"/"+shared.LOCALDIR+"/"+shared.BOOTJSON, data, shared.FILEPERMISSIONMODE)
 }
 
 /*
@@ -83,16 +106,21 @@ Connect sends a connection request and prepares for bootstrapping. NOTE: Not a
 callback method.
 */
 func (c *chaninterface) Connect(address string) error {
-	// notify that on connection we will need to bootstrap the peer
-	log.Println("Adding to bootstrap list")
-	c.bootstrap[c.tin.channel.FormatAddress(address)] = true
-	c.printBootstrap()
 	// send own peer
 	msg, err := json.Marshal(c.tin.selfpeer)
 	if err != nil {
 		return err
 	}
-	return c.tin.channel.RequestConnection(address, string(msg))
+	// send request
+	err = c.tin.channel.RequestConnection(address, string(msg))
+	if err != nil {
+		return err
+	}
+	// if request is sent successfully, remember for bootstrap
+	// format to legal address
+	address = strings.ToLower(address)[:64]
+	c.bootstrap[address] = true
+	return nil
 }
 
 // -------------------------CALLBACKS-------------------------------------------
@@ -202,8 +230,8 @@ func (c *chaninterface) OnNewConnection(address, message string) {
 	peer.Address = address
 	// add peer to local list
 	c.tin.allPeers = append(c.tin.allPeers, peer)
-	log.Println("MAYBE add peer to bootstrap here?")
-	/*TODO c.tin.store? peer needs to be written to disk for sync...*/
+	// try store new peer to disk
+	_ = c.tin.Store()
 }
 
 /*
@@ -211,14 +239,11 @@ OnConnected is called when a peer comes online. We check whether it requires
 bootstrapping, if not we do nothing.
 */
 func (c *chaninterface) OnConnected(address string) {
-	_, exists := c.bootstrap[c.tin.channel.FormatAddress(address)]
+	_, exists := c.bootstrap[address]
 	if !exists {
-		log.Println("Missing:", address)
 		// nope, doesn't need bootstrap
-		c.printBootstrap()
 		return
 	}
-	log.Println("SUCCESS??")
 	// initiate file transfer for peer obj
 	rm := shared.CreateRequestMessage(shared.RePeer, "")
 	c.tin.channel.Send(address, rm.String())
@@ -454,6 +479,7 @@ func (c *chaninterface) applyUpdateWithMerge(msg shared.UpdateMessage) error {
 	return nil
 }
 
+/*
 func (c *chaninterface) printBootstrap() {
 	log.Println("START----------------------")
 	for value := range c.bootstrap {
@@ -461,3 +487,4 @@ func (c *chaninterface) printBootstrap() {
 	}
 	log.Println("END------------------------")
 }
+*/

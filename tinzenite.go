@@ -123,6 +123,11 @@ func (t *Tinzenite) Store() error {
 	if err != nil {
 		return err
 	}
+	// store bootstrap
+	err = t.cInterface.Store(t.Path)
+	if err != nil {
+		return err
+	}
 	// update model for tinzenite dir to catch above stores
 	err = t.model.PartialUpdate(t.Path + "/" + shared.TINZENITEDIR)
 	if err != nil {
@@ -178,6 +183,19 @@ func (t *Tinzenite) merge(msg *shared.UpdateMessage) error {
 	err := t.model.PartialUpdate(relPath.FullPath())
 	if err != nil {
 		return err
+	}
+	// check if content is same, no need for merge then (except for version)
+	stin, err := t.model.GetInfo(relPath)
+	if err != nil {
+		log.Println("Core:", "Can not check if content is same!")
+	} else {
+		if stin.Content == msg.Object.Content {
+			log.Println("Core:", "Merge not required as updates are in sync!")
+			// so all we need to do is apply the version update
+			/*TODO: we need applymodify WITHOUT the fetching of the file...*/
+			t.model.ApplyModify(relPath, &msg.Object)
+			return nil
+		}
 	}
 	// second: move to new name
 	err = os.Rename(relPath.FullPath(), relPath.FullPath()+LOCAL)
