@@ -266,6 +266,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
+			log.Println("Received update message!", msg.Operation)
 			c.onUpdateMessage(address, *msg)
 		case shared.MsgRequest:
 			// read request message
@@ -275,6 +276,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
+			log.Println("Received request message!")
 			c.onRequestMessage(address, *msg)
 		case shared.MsgModel:
 			msg := &shared.ModelMessage{}
@@ -283,6 +285,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
+			log.Println("Received model request!")
 			c.onModelMessage(address, *msg)
 		default:
 			log.Printf("Unknown object sent: %s!\n", msgType)
@@ -292,31 +295,9 @@ func (c *chaninterface) OnMessage(address, message string) {
 	}
 	// if unmarshal didn't work check for plain commands:
 	switch message {
-	case "model":
-		model, err := c.tin.model.Read()
-		/*TODO need to implement this better, model is too large for normal msg*/
-		err = c.tin.send(address, model.String()[:1000])
-		if err != nil {
-			log.Println(err.Error())
-		}
 	case "auth":
 		authbin, _ := json.Marshal(c.tin.auth)
 		c.tin.channel.Send(address, string(authbin))
-	case "create":
-		// CREATE
-		// messy but works: create file correctly, create objs, then move it to the correct temp location
-		// first named create.txt to enable testing of create merge
-		os.Create(c.tin.Path + "/create.txt")
-		ioutil.WriteFile(c.tin.Path+"/create.txt", []byte("bonjour!"), shared.FILEPERMISSIONMODE)
-		obj, _ := shared.CreateObjectInfo(c.tin.Path, "create.txt", "otheridhere")
-		os.Rename(c.tin.Path+"/create.txt", c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.TEMPDIR+"/"+obj.Identification)
-		obj.Name = "test.txt"
-		obj.Path = "test.txt"
-		msg := shared.CreateUpdateMessage(shared.OpCreate, *obj)
-		err := c.applyUpdateWithMerge(msg)
-		if err != nil {
-			log.Println("Create error: " + err.Error())
-		}
 	case "modify":
 		// MODIFY
 		obj, _ := shared.CreateObjectInfo(c.tin.Path, "test.txt", "otheridhere")

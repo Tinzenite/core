@@ -68,10 +68,10 @@ func (t *Tinzenite) SyncRemote() error {
 }
 
 /*
-Address of this Tinzenite peer.
+Address of this Tinzenite peer that can be used to connect to.
 */
-func (t *Tinzenite) Address() string {
-	return t.selfpeer.Address
+func (t *Tinzenite) Address() (string, error) {
+	return t.channel.ConnectionAddress()
 }
 
 /*
