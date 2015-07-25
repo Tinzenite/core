@@ -237,6 +237,9 @@ func (c *chaninterface) OnNewConnection(address, message string) {
 /*
 OnConnected is called when a peer comes online. We check whether it requires
 bootstrapping, if not we do nothing.
+
+TODO: this is not called on friend request! FIXME: Maybe by implementing a special
+message?
 */
 func (c *chaninterface) OnConnected(address string) {
 	_, exists := c.bootstrap[address]

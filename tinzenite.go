@@ -152,10 +152,17 @@ func (t *Tinzenite) sendAll(msg string) {
 		if strings.EqualFold(peer.Address, t.selfpeer.Address) {
 			continue
 		}
-		/*TODO - also make this concurrent?*/
-		err := t.channel.Send(peer.Address, msg)
+		online, err := t.channel.IsOnline(peer.Address)
 		if err != nil {
-			log.Println(err.Error(), peer.Address)
+			log.Println(err)
+			continue
+		}
+		if online {
+			/*TODO - also make this concurrent?*/
+			err := t.channel.Send(peer.Address, msg)
+			if err != nil {
+				log.Println(err.Error(), peer.Address)
+			}
 		}
 		// if online -> continue
 		// if not init -> init
@@ -253,7 +260,7 @@ func (t *Tinzenite) storeGlobalConfig() error {
 		return err
 	}
 	path += "/" + shared.DIRECTORYLIST
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, shared.FILEPERMISSIONMODE)
+	file, err := os.OpenFile(path, shared.FILEFLAGCREATEAPPEND, shared.FILEPERMISSIONMODE)
 	if err != nil {
 		return err
 	}
