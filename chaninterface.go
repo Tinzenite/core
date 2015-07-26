@@ -386,6 +386,10 @@ func (c *chaninterface) OnMessage(address, message string) {
 		obj.Identification, _ = shared.NewIdentifier()
 		um := shared.CreateUpdateMessage(shared.OpCreate, *obj)
 		c.tin.channel.Send(address, um.String())
+	case "showremove":
+		obj, _ := c.tin.model.GetInfo(shared.CreatePath(c.tin.Path, "remove.me"))
+		um := shared.CreateUpdateMessage(shared.OpRemove, *obj)
+		c.tin.channel.Send(address, um.String())
 	default:
 		log.Println("Received", message)
 		c.tin.channel.Send(address, "ACK")
