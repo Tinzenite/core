@@ -152,7 +152,6 @@ callbackFileReceived is for channel. It is called once the file has been success
 received, thus initiates the actual local merging into the model.
 */
 func (c *chaninterface) OnFileReceived(address, path, filename string) {
-	/*TODO if model --> call model.Syncmodel*/
 	// always free peer here
 	delete(c.active, address)
 	// split filename to get identification
@@ -160,6 +159,12 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 	identification := strings.Split(filename, ".")[1]
 	if check != address {
 		log.Println("Filename is mismatched!")
+		return
+	}
+	if identification == MODEL {
+		/*TODO if model --> call model.Syncmodel*/
+		log.Println("TODO: CALL MODEL SYNC")
+		/*TODO do we need to remove the transfer? Don't think so but check...*/
 		return
 	}
 	/*TODO check request if file is delta / must be decrypted before applying to model*/
@@ -282,9 +287,10 @@ func (c *chaninterface) OnMessage(address, message string) {
 			if msg.Request == shared.ReModel {
 				log.Println("Received model message!")
 				c.onModelMessage(address, *msg)
+			} else {
+				log.Println("Received request message!")
+				c.onRequestMessage(address, *msg)
 			}
-			log.Println("Received request message!")
-			c.onRequestMessage(address, *msg)
 		default:
 			log.Printf("Unknown object sent: %s!\n", msgType)
 		}
@@ -366,11 +372,32 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 }
 
 func (c *chaninterface) onModelMessage(address string, msg shared.RequestMessage) {
-	// send model as file
-	err := c.tin.channel.SendFile(address, c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.LOCALDIR+"/"+shared.MODELJSON, "model")
+	// get model
+	objModel, err := c.tin.model.Read()
 	if err != nil {
 		log.Println(err)
+		return
 	}
+	// to JSON
+	data, err := json.MarshalIndent(objModel, "", "  ")
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	filename := address + MODEL
+	// write to file in temporary
+	err = ioutil.WriteFile(c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.TEMPDIR+"/"+filename, data, shared.FILEPERMISSIONMODE)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	// send model as file
+	err = c.tin.channel.SendFile(address, c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.TEMPDIR+"/"+filename, filename)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	/*TODO what to do when sent? need to remove temp file!*/
 }
 
 /*

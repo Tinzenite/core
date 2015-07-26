@@ -11,6 +11,7 @@ problems... Consider using name of peers and version numbers.
 const (
 	LOCAL  = ".LOCAL"
 	REMOTE = ".REMOTE"
+	MODEL  = ".MODEL"
 )
 
 // .tinignore content for .tinzenite directory
