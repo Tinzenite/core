@@ -49,6 +49,12 @@ SyncLocal changes. Will send updates to connected peers but not synchronize with
 other peers.
 */
 func (t *Tinzenite) SyncLocal() error {
+	// update peers
+	err := t.applyPeers()
+	if err != nil {
+		return err
+	}
+	// update model
 	return t.model.Update()
 }
 
@@ -61,7 +67,7 @@ TODO: fetches model from other peers and syncs (this is for manual sync)
 func (t *Tinzenite) SyncRemote() error {
 	// iterate over all known peers
 	//the following can be parallelized!
-	msg := shared.CreateRequestMessage(shared.ReModel, "")
+	msg := shared.CreateRequestMessage(shared.ReModel, "TODO")
 	t.sendAll(msg.String())
 	/*TODO implement model detection on receive? Not here, I guess?*/
 	return nil
@@ -142,6 +148,26 @@ Connect this tinzenite to another peer, beginning the bootstrap process.
 */
 func (t *Tinzenite) Connect(address string) error {
 	return t.cInterface.Connect(address)
+}
+
+/*
+applyPeers loads all peers and readies the communication channel accordingly.
+*/
+func (t *Tinzenite) applyPeers() error {
+	peers, err := shared.LoadPeers(t.Path)
+	if err != nil {
+		return err
+	}
+	// make sure they are all tox ready
+	for _, peer := range peers {
+		err := t.channel.AcceptConnection(peer.Address)
+		if err != nil {
+			log.Println("applyPeers:", err)
+		}
+	}
+	// finally apply
+	t.allPeers = peers
+	return nil
 }
 
 /*

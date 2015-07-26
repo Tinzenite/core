@@ -98,7 +98,7 @@ func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
 		return nil, err
 	}
 	t.model = model
-	// load peer list
+	// load peer list (don't use t.applyPeers – channel not running yet!)
 	peers, err := shared.LoadPeers(dirpath)
 	if err != nil {
 		return nil, err
