@@ -160,10 +160,8 @@ func (t *Tinzenite) applyPeers() error {
 	}
 	// make sure they are all tox ready
 	for _, peer := range peers {
-		err := t.channel.AcceptConnection(peer.Address)
-		if err != nil {
-			log.Println("applyPeers:", err)
-		}
+		// tox will return an error if the address has already been added, so we just ignore it
+		_ = t.channel.AcceptConnection(peer.Address)
 	}
 	// finally apply
 	t.allPeers = peers

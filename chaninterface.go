@@ -74,7 +74,6 @@ transfers as well. NOTE: Not a callback method.
 */
 func (c *chaninterface) fetchAttachedFile(address string, um shared.UpdateMessage) {
 	ident := um.Object.Identification
-	log.Println("Ident:", ident)
 	if tran, exists := c.transfers[ident]; exists {
 		// check if we need to update updatemessage
 		oldVersion := tran.success.Object.Version
@@ -153,6 +152,7 @@ callbackFileReceived is for channel. It is called once the file has been success
 received, thus initiates the actual local merging into the model.
 */
 func (c *chaninterface) OnFileReceived(address, path, filename string) {
+	/*TODO if model --> call model.Syncmodel*/
 	// always free peer here
 	delete(c.active, address)
 	// split filename to get identification
@@ -279,17 +279,12 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
+			if msg.Request == shared.ReModel {
+				log.Println("Received model message!")
+				c.onModelMessage(address, *msg)
+			}
 			log.Println("Received request message!")
 			c.onRequestMessage(address, *msg)
-		case shared.MsgModel:
-			msg := &shared.ModelMessage{}
-			err := json.Unmarshal([]byte(message), msg)
-			if err != nil {
-				log.Println(err.Error())
-				return
-			}
-			log.Println("Received model request!")
-			c.onModelMessage(address, *msg)
 		default:
 			log.Printf("Unknown object sent: %s!\n", msgType)
 		}
@@ -298,78 +293,12 @@ func (c *chaninterface) OnMessage(address, message string) {
 	}
 	// if unmarshal didn't work check for plain commands:
 	switch message {
-	case "auth":
-		authbin, _ := json.Marshal(c.tin.auth)
-		c.tin.channel.Send(address, string(authbin))
-	case "modify":
-		// MODIFY
-		obj, _ := shared.CreateObjectInfo(c.tin.Path, "test.txt", "otheridhere")
-		orig, _ := c.tin.model.StaticInfos[c.tin.Path+"/test.txt"]
-		// id must be same
-		obj.Identification = orig.Identification
-		// version apply so that we can always "update" it
-		obj.Version[c.tin.model.SelfID] = orig.Version[c.tin.model.SelfID]
-		// if orig already has, increase further
-		value, ok := orig.Version["otheridhere"]
-		if ok {
-			obj.Version["otheridhere"] = value
-		}
-		// add one new version
-		obj.Version.Increase("otheridhere")
-		um := shared.CreateUpdateMessage(shared.OpModify, *obj)
-		err := c.tin.model.ApplyUpdateMessage(&um)
-		if err != nil {
-			log.Println(err.Error())
-		}
-	case "sendmodify":
-		path := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR
-		orig, _ := c.tin.model.StaticInfos[c.tin.Path+"/test.txt"]
-		// write change to file in temp, simulating successful download
-		ioutil.WriteFile(path+"/"+orig.Identification, []byte("send modify hello world!"), shared.FILEPERMISSIONMODE)
-	case "testdir":
-		// Test creation and removal of directory
-		shared.MakeDirectory(c.tin.Path + "/dirtest")
-		obj, _ := shared.CreateObjectInfo(c.tin.Path, "dirtest", "dirtestpeer")
-		os.Remove(c.tin.Path + "/dirtest")
-		um := shared.CreateUpdateMessage(shared.OpCreate, *obj)
-		err := c.tin.model.ApplyUpdateMessage(&um)
-		if err != nil {
-			log.Println(err.Error())
-		}
-	case "conflict":
-		// MODIFY that creates merge conflict
-		path := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR
-		ioutil.WriteFile(c.tin.Path+"/merge.txt", []byte("written from conflict test"), shared.FILEPERMISSIONMODE)
-		obj, _ := shared.CreateObjectInfo(c.tin.Path, "merge.txt", "otheridhere")
-		os.Rename(c.tin.Path+"/merge.txt", path+"/"+obj.Identification)
-		obj.Path = "test.txt"
-		obj.Name = "test.txt"
-		obj.Version[c.tin.model.SelfID] = -1
-		obj.Version.Increase("otheridhere") // the remote change
-		msg := shared.CreateUpdateMessage(shared.OpModify, *obj)
-		err := c.applyUpdateWithMerge(msg)
-		if err != nil {
-			log.Println("Conflict error: " + err.Error())
-		}
-	case "delete":
-		// DELETE
-		obj, err := shared.CreateObjectInfo(c.tin.Path, "test.txt", "otheridhere")
-		if err != nil {
-			log.Println(err.Error())
-			return
-		}
-		os.Remove(c.tin.Path + "/test.txt")
-		um := shared.CreateUpdateMessage(shared.OpRemove, *obj)
-		c.tin.model.ApplyUpdateMessage(&um)
-		/*TODO implement remove merge conflict!*/
-	case "showupdate":
-		// helpful command that creates a model update message so that I can test it
-		obj, _ := c.tin.model.GetInfo(shared.CreatePath(c.tin.Path, "test.txt"))
-		mm := shared.CreateModelMessage(*obj)
-		c.tin.send(address, mm.String())
 	case "showrequest":
 		obj, _ := c.tin.model.GetInfo(shared.CreatePath(c.tin.Path, "Damned Society - Sunny on Sunday.mp3"))
 		rm := shared.CreateRequestMessage(shared.ReObject, obj.Identification)
+		c.tin.send(address, rm.String())
+	case "showmodelrequest":
+		rm := shared.CreateRequestMessage(shared.ReModel, "model")
 		c.tin.send(address, rm.String())
 	case "showpeerupdate":
 		/*NOTE: Will only work as long as that peer file exists. For bootstrap testing only!*/
@@ -432,24 +361,16 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 	}
 	err = c.tin.channel.SendFile(address, path, msg.Identification)
 	if err != nil {
-		log.Println(err.Error())
+		log.Println(err)
 	}
 }
 
-func (c *chaninterface) onModelMessage(address string, msg shared.ModelMessage) {
-	// create updatemessage
-	um, err := c.tin.model.SyncObject(&msg.Object)
+func (c *chaninterface) onModelMessage(address string, msg shared.RequestMessage) {
+	// send model as file
+	err := c.tin.channel.SendFile(address, c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.LOCALDIR+"/"+shared.MODELJSON, "model")
 	if err != nil {
-		log.Println(err.Error())
-		return
+		log.Println(err)
 	}
-	// if nil we don't need to do anything --> no update necessary
-	if um == nil {
-		log.Println("Nothing to do for object!")
-		return
-	}
-	// send request for object
-	c.fetchAttachedFile(address, *um)
 }
 
 /*
@@ -466,13 +387,3 @@ func (c *chaninterface) applyUpdateWithMerge(msg shared.UpdateMessage) error {
 	}
 	return nil
 }
-
-/*
-func (c *chaninterface) printBootstrap() {
-	log.Println("START----------------------")
-	for value := range c.bootstrap {
-		log.Println("Have:", value)
-	}
-	log.Println("END------------------------")
-}
-*/
