@@ -53,9 +53,11 @@ func createChannelInterface(t *Tinzenite) *chaninterface {
 type transfer struct {
 	// peers stores the addresses of all known peers that have the file update
 	peers []string
-	// the message to apply once the file has been received
-	success shared.UpdateMessage
+	// function to execute once the file has been received
+	done onDone
 }
+
+type onDone func(path string)
 
 /*
 Store saves the bootstrap list so that it remains active over disconnects.
@@ -66,39 +68,6 @@ func (c *chaninterface) Store(root string) error {
 		return err
 	}
 	return ioutil.WriteFile(root+"/"+shared.TINZENITEDIR+"/"+shared.LOCALDIR+"/"+shared.BOOTJSON, data, shared.FILEPERMISSIONMODE)
-}
-
-/*
-RequestFile is to be called by Tinzenite to authorize a file transfer
-and to store what is to be done once it is successful. Handles multiplexing of
-transfers as well. NOTE: Not a callback method.
-*/
-func (c *chaninterface) fetchAttachedFile(address string, um shared.UpdateMessage) {
-	ident := um.Object.Identification
-	if tran, exists := c.transfers[ident]; exists {
-		// check if we need to update updatemessage
-		oldVersion := tran.success.Object.Version
-		newVersion := um.Object.Version
-		if newVersion.Max() > oldVersion.Max() {
-			/*TODO restart file transfer if applicable... oO*/
-			/*TODO do I kick the old peer too?*/
-			tran.success = um
-			c.transfers[ident] = tran
-			log.Println("Updated transfer!")
-		}
-		// add peer to available possibilities
-		tran.peers = append(tran.peers, address)
-		log.Println("Transfer already exists, added peer!")
-		return
-	}
-	// create new one
-	tran := transfer{peers: []string{address}, success: um}
-	// add
-	c.transfers[ident] = tran
-	/*TODO send request to only one underutilized peer at once*/
-	// FOR NOW: just get it from whomever send the update
-	reqMsg := shared.CreateRequestMessage(shared.ReObject, ident)
-	c.tin.channel.Send(address, reqMsg.String())
 }
 
 /*
@@ -121,6 +90,59 @@ func (c *chaninterface) Connect(address string) error {
 	address = strings.ToLower(address)[:64]
 	c.bootstrap[address] = true
 	return nil
+}
+
+func (c *chaninterface) requestModel(address string) {
+	// create & modify must first fetch file
+	rm := shared.CreateRequestMessage(shared.ReModel, "")
+	// request file and apply update on success
+	c.requestFile(address, rm, func(path string) {
+		// read model file and remove it
+		data, err := ioutil.ReadFile(path)
+		if err != nil {
+			log.Println("ReModel:", err)
+			return
+		}
+		err = os.Remove(path)
+		if err != nil {
+			log.Println("ReModel:", err)
+			// not strictly critical so no return here
+		}
+		// unmarshal
+		var foreignModel *shared.ObjectInfo
+		err = json.Unmarshal(data, foreignModel)
+		if err != nil {
+			log.Println("ReModel:", err)
+			return
+		}
+		// get difference in updates
+		updateLists, err := c.tin.model.SyncModel(foreignModel)
+		if err != nil {
+			log.Println("ReModel:", err)
+			return
+		}
+		log.Println("Amount of update:", len(updateLists))
+		// pretend that the updatemessage came from outside here
+		/*TODO apply updates*/
+	})
+}
+
+/*
+requestFile requests the given request from the address and executes the function
+when the transfer was successful or not. NOTE: only f may be nil.
+*/
+func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f onDone) error {
+	if _, exists := c.transfers[rm.Identification]; exists {
+		log.Println("TODO: IGNORING multiple request for", rm.Identification)
+		/*TODO implement that if version higher cancel old and restart new, additional peers*/
+		return shared.ErrUnsupported
+	}
+	// create new transfer
+	tran := transfer{peers: []string{address}, done: f}
+	c.transfers[rm.Identification] = tran
+	/*TODO send request to only one underutilized peer at once*/
+	// FOR NOW: just get it from whomever send the update
+	return c.tin.channel.Send(address, rm.String())
 }
 
 // -------------------------CALLBACKS-------------------------------------------
@@ -162,12 +184,6 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 		log.Println("Filename is mismatched!")
 		return
 	}
-	if identification == MODEL {
-		/*TODO if model --> call model.Syncmodel*/
-		log.Println("TODO: CALL MODEL SYNC")
-		/*TODO do we need to remove the transfer? Don't think so but check...*/
-		return
-	}
 	/*TODO check request if file is delta / must be decrypted before applying to model*/
 	tran, exists := c.transfers[identification]
 	if !exists {
@@ -182,17 +198,15 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 		return
 	}
 	// move from receiving to temp
-	err := os.Rename(c.recpath+"/"+filename, c.temppath+"/"+identification)
+	err := os.Rename(c.recpath+"/"+filename, c.temppath+"/"+filename)
 	if err != nil {
 		log.Println("Failed to move file to temp: " + err.Error())
 		return
 	}
-	// apply
-	err = c.applyUpdateWithMerge(tran.success)
-	if err != nil {
-		log.Println("File application error: " + err.Error())
+	// execute done function if it exists
+	if tran.done != nil {
+		tran.done(c.temppath + "/" + filename)
 	}
-	// aaaand done!
 }
 
 /*
@@ -335,7 +349,22 @@ func (c *chaninterface) OnMessage(address, message string) {
 func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage) {
 	if op := msg.Operation; op == shared.OpCreate || op == shared.OpModify {
 		// create & modify must first fetch file
-		c.fetchAttachedFile(address, msg)
+		rm := shared.CreateRequestMessage(shared.ReObject, msg.Object.Identification)
+		// request file and apply update on success
+		c.requestFile(address, rm, func(path string) {
+			// rename to correct name for model
+			err := os.Rename(path, c.temppath+"/"+rm.Identification)
+			if err != nil {
+				log.Println("Failed to move file to temp: " + err.Error())
+				return
+			}
+			// apply
+			err = c.applyUpdateWithMerge(msg)
+			if err != nil {
+				log.Println("File application error: " + err.Error())
+			}
+			// done
+		})
 	} else if op == shared.OpRemove {
 		// remove is without file transfer, so directly apply
 		c.applyUpdateWithMerge(msg)
@@ -412,6 +441,7 @@ sendFile ensures that only a limited number of transfers are running at the same
 time.
 
 TODO implement. Write to buffered channel? Channel reads from it? Or via queue?
+Actually it seems like Tox does that by itself: https://github.com/irungentoo/toxcore/issues/1382
 */
 func (c *chaninterface) sendFile(address, path, identification string, f channel.OnDone) error {
 	// if no function is given we want to at least be notified if something went wrong, right?

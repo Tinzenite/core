@@ -64,11 +64,13 @@ to the local peer.
 TODO: fetches model from other peers and syncs (this is for manual sync)
 */
 func (t *Tinzenite) SyncRemote() error {
-	// iterate over all known peers
-	//the following can be parallelized!
-	msg := shared.CreateRequestMessage(shared.ReModel, "TODO")
-	t.sendAll(msg.String())
-	/*TODO implement model detection on receive? Not here, I guess?*/
+	online, err := t.channel.OnlineAddresses()
+	if err != nil {
+		return err
+	}
+	for _, address := range online {
+		t.cInterface.requestModel(address)
+	}
 	return nil
 }
 
@@ -165,28 +167,6 @@ func (t *Tinzenite) applyPeers() error {
 	// finally apply
 	t.allPeers = peers
 	return nil
-}
-
-/*
-Send the given message string to all online and connected peers.
-*/
-func (t *Tinzenite) sendAll(msg string) {
-	online, err := t.channel.OnlineAddresses()
-	if err != nil {
-		log.Println("sendAll:", err)
-		return
-	}
-	for _, address := range online {
-		/*TODO - also make this concurrent?*/
-		err := t.channel.Send(address, msg)
-		if err != nil {
-			log.Println(err.Error(), address)
-		}
-		// if online -> continue
-		// if not init -> init
-		// sync
-		/*TODO must store init state in allPeers too, also in future encryption*/
-	}
 }
 
 /*
@@ -329,7 +309,13 @@ func (t *Tinzenite) background() {
 			t.wg.Done()
 			return
 		case msg := <-t.sendChannel:
-			t.sendAll(msg.String())
+			online, err := t.channel.OnlineAddresses()
+			if err != nil {
+				log.Println("Background:", err)
+			}
+			for _, address := range online {
+				t.channel.Send(address, msg.String())
+			}
 		} // select
 	} // for
 }
