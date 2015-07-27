@@ -109,7 +109,7 @@ func (c *chaninterface) requestModel(address string) {
 			// not strictly critical so no return here
 		}
 		// unmarshal
-		var foreignModel *shared.ObjectInfo
+		foreignModel := &shared.ObjectInfo{}
 		err = json.Unmarshal(data, foreignModel)
 		if err != nil {
 			log.Println("ReModel:", err)
@@ -134,7 +134,6 @@ when the transfer was successful or not. NOTE: only f may be nil.
 func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f onDone) error {
 	// build key
 	key := address + ":" + rm.Identification
-	log.Println("Registering for", key)
 	if _, exists := c.transfers[key]; exists {
 		log.Println("TODO: IGNORING multiple request for", rm.Identification)
 		/*TODO implement that if version higher cancel old and restart new, additional peers*/
@@ -156,7 +155,6 @@ not. Checks the address and identification of the object against c.transfers.
 */
 func (c *chaninterface) OnAllowFile(address, identification string) (bool, string) {
 	key := address + ":" + identification
-	log.Println("Reading for", key)
 	tran, exists := c.transfers[key]
 	if !exists {
 		log.Println("Transfer not authorized for", identification, "!")
@@ -190,7 +188,9 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 		return
 	}
 	/*TODO check request if file is delta / must be decrypted before applying to model*/
-	tran, exists := c.transfers[identification]
+	// get tran with key
+	key := address + ":" + identification
+	tran, exists := c.transfers[key]
 	if !exists {
 		log.Println("Transfer doesn't even exist anymore! Something bad went wrong...")
 		// remove from transfers
