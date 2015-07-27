@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"os/user"
-	"strings"
 	"sync"
 
 	"github.com/tinzenite/channel"
@@ -172,21 +171,16 @@ func (t *Tinzenite) applyPeers() error {
 Send the given message string to all online and connected peers.
 */
 func (t *Tinzenite) sendAll(msg string) {
-	for _, peer := range t.allPeers {
-		if strings.EqualFold(peer.Address, t.selfpeer.Address) {
-			continue
-		}
-		online, err := t.channel.IsOnline(peer.Address)
+	online, err := t.channel.OnlineAddresses()
+	if err != nil {
+		log.Println("sendAll:", err)
+		return
+	}
+	for _, address := range online {
+		/*TODO - also make this concurrent?*/
+		err := t.channel.Send(address, msg)
 		if err != nil {
-			log.Println(err)
-			continue
-		}
-		if online {
-			/*TODO - also make this concurrent?*/
-			err := t.channel.Send(peer.Address, msg)
-			if err != nil {
-				log.Println(err.Error(), peer.Address)
-			}
+			log.Println(err.Error(), address)
 		}
 		// if online -> continue
 		// if not init -> init
