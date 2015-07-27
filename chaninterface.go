@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/tinzenite/channel"
 	"github.com/tinzenite/shared"
 )
 
@@ -365,7 +366,7 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 		log.Println("Model: ", err)
 		return
 	}
-	err = c.tin.channel.SendFile(address, path, msg.Identification)
+	err = c.sendFile(address, path, msg.Identification, nil)
 	if err != nil {
 		log.Println(err)
 	}
@@ -391,13 +392,37 @@ func (c *chaninterface) onModelMessage(address string, msg shared.RequestMessage
 		log.Println(err)
 		return
 	}
+	// need to remove temp independent of whether success or not
+	removeTemp := func(success bool) {
+		err := os.Remove(c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR + "/" + filename)
+		if err != nil {
+			log.Println("RemoveTemp:", err)
+		}
+	}
 	// send model as file
-	err = c.tin.channel.SendFile(address, c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.TEMPDIR+"/"+filename, filename)
+	err = c.sendFile(address, c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.TEMPDIR+"/"+filename, filename, removeTemp)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	/*TODO what to do when sent? need to remove temp file!*/
+}
+
+/*
+sendFile ensures that only a limited number of transfers are running at the same
+time.
+
+TODO implement. Write to buffered channel? Channel reads from it? Or via queue?
+*/
+func (c *chaninterface) sendFile(address, path, identification string, f channel.OnDone) error {
+	// if no function is given we want to at least be notified if something went wrong, right?
+	if f == nil {
+		f = func(success bool) {
+			if !success {
+				log.Println("Send failed!")
+			}
+		}
+	}
+	return c.tin.channel.SendFile(address, path, identification, f)
 }
 
 /*
