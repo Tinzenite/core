@@ -94,7 +94,7 @@ func (c *chaninterface) Connect(address string) error {
 
 func (c *chaninterface) requestModel(address string) {
 	// create & modify must first fetch file
-	rm := shared.CreateRequestMessage(shared.ReModel, "")
+	rm := shared.CreateRequestMessage(shared.ReModel, IDMODEL)
 	// request file and apply update on success
 	c.requestFile(address, rm, func(path string) {
 		// read model file and remove it
@@ -132,14 +132,17 @@ requestFile requests the given request from the address and executes the functio
 when the transfer was successful or not. NOTE: only f may be nil.
 */
 func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f onDone) error {
-	if _, exists := c.transfers[rm.Identification]; exists {
+	// build key
+	key := address + ":" + rm.Identification
+	log.Println("Registering for", key)
+	if _, exists := c.transfers[key]; exists {
 		log.Println("TODO: IGNORING multiple request for", rm.Identification)
 		/*TODO implement that if version higher cancel old and restart new, additional peers*/
 		return shared.ErrUnsupported
 	}
 	// create new transfer
 	tran := transfer{peers: []string{address}, done: f}
-	c.transfers[rm.Identification] = tran
+	c.transfers[key] = tran
 	/*TODO send request to only one underutilized peer at once*/
 	// FOR NOW: just get it from whomever send the update
 	return c.tin.channel.Send(address, rm.String())
@@ -152,7 +155,9 @@ OnAllowFile is the callback that checks whether the transfer is to be accepted o
 not. Checks the address and identification of the object against c.transfers.
 */
 func (c *chaninterface) OnAllowFile(address, identification string) (bool, string) {
-	tran, exists := c.transfers[identification]
+	key := address + ":" + identification
+	log.Println("Reading for", key)
+	tran, exists := c.transfers[key]
 	if !exists {
 		log.Println("Transfer not authorized for", identification, "!")
 		return false, ""
@@ -428,8 +433,8 @@ func (c *chaninterface) onModelMessage(address string, msg shared.RequestMessage
 			log.Println("RemoveTemp:", err)
 		}
 	}
-	// send model as file
-	err = c.sendFile(address, c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.TEMPDIR+"/"+filename, filename, removeTemp)
+	// send model as file. NOTE: name that is sent is not filename but IDMODEL
+	err = c.sendFile(address, c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.TEMPDIR+"/"+filename, IDMODEL, removeTemp)
 	if err != nil {
 		log.Println(err)
 		return
