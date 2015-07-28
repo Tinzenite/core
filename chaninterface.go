@@ -123,7 +123,9 @@ func (c *chaninterface) requestModel(address string) {
 		}
 		log.Println("Amount of update:", len(updateLists))
 		// pretend that the updatemessage came from outside here
-		/*TODO apply updates*/
+		for _, um := range updateLists {
+			c.remoteUpdate(address, *um)
+		}
 	})
 }
 
@@ -353,23 +355,8 @@ func (c *chaninterface) OnMessage(address, message string) {
 
 func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage) {
 	if op := msg.Operation; op == shared.OpCreate || op == shared.OpModify {
-		// create & modify must first fetch file
-		rm := shared.CreateRequestMessage(shared.ReObject, msg.Object.Identification)
-		// request file and apply update on success
-		c.requestFile(address, rm, func(path string) {
-			// rename to correct name for model
-			err := os.Rename(path, c.temppath+"/"+rm.Identification)
-			if err != nil {
-				log.Println("Failed to move file to temp: " + err.Error())
-				return
-			}
-			// apply
-			err = c.applyUpdateWithMerge(msg)
-			if err != nil {
-				log.Println("File application error: " + err.Error())
-			}
-			// done
-		})
+		// fetch and apply file
+		c.remoteUpdate(address, msg)
 	} else if op == shared.OpRemove {
 		// remove is without file transfer, so directly apply
 		c.applyUpdateWithMerge(msg)
@@ -439,6 +426,30 @@ func (c *chaninterface) onModelMessage(address string, msg shared.RequestMessage
 		log.Println(err)
 		return
 	}
+}
+
+/*
+remoteUpdate is a conveniance wrapper that fetches a file from the address for
+the given update and then applies it.
+*/
+func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
+	// create & modify must first fetch file
+	rm := shared.CreateRequestMessage(shared.ReObject, msg.Object.Identification)
+	// request file and apply update on success
+	c.requestFile(address, rm, func(path string) {
+		// rename to correct name for model
+		err := os.Rename(path, c.temppath+"/"+rm.Identification)
+		if err != nil {
+			log.Println("Failed to move file to temp: " + err.Error())
+			return
+		}
+		// apply
+		err = c.applyUpdateWithMerge(msg)
+		if err != nil {
+			log.Println("File application error: " + err.Error())
+		}
+		// done
+	})
 }
 
 /*
