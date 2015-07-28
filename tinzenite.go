@@ -69,7 +69,7 @@ func (t *Tinzenite) SyncRemote() error {
 		return err
 	}
 	for _, address := range online {
-		t.cInterface.requestModel(address)
+		t.cInterface.requestModel(address, false)
 	}
 	return nil
 }

@@ -96,7 +96,7 @@ func (c *chaninterface) Connect(address string) error {
 requestModel requests the model from another peer and upon receiving it will
 apply it to the local model. If a bootstrap is detected this will complete it.
 */
-func (c *chaninterface) requestModel(address string) {
+func (c *chaninterface) requestModel(address string, bootstrap bool) {
 	// create & modify must first fetch file
 	rm := shared.CreateRequestMessage(shared.ReModel, IDMODEL)
 	// request file and apply update on success
@@ -120,7 +120,12 @@ func (c *chaninterface) requestModel(address string) {
 			return
 		}
 		// get difference in updates
-		updateLists, err := c.tin.model.SyncModel(foreignModel)
+		var updateLists []*shared.UpdateMessage
+		if bootstrap {
+			updateLists, err = c.tin.model.BootstrapModel(foreignModel)
+		} else {
+			updateLists, err = c.tin.model.SyncModel(foreignModel)
+		}
 		if err != nil {
 			log.Println("ReModel:", err)
 			return
@@ -278,7 +283,7 @@ func (c *chaninterface) OnConnected(address string) {
 		return
 	}
 	// bootstrap
-	c.requestModel(address)
+	c.requestModel(address, true)
 }
 
 /*
