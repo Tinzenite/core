@@ -89,6 +89,7 @@ func (c *chaninterface) Connect(address string) error {
 	// format to legal address
 	address = strings.ToLower(address)[:64]
 	c.bootstrap[address] = true
+	log.Println("Bootstrapped", address)
 	return nil
 }
 
@@ -123,6 +124,8 @@ func (c *chaninterface) requestModel(address string, bootstrap bool) {
 		var updateLists []*shared.UpdateMessage
 		if bootstrap {
 			updateLists, err = c.tin.model.BootstrapModel(foreignModel)
+			/*TODO this is ouch. Need to restart TINZENITE without STORE!*/
+			log.Println("RESTART TINZENITE WITHOUT STORE!")
 		} else {
 			updateLists, err = c.tin.model.SyncModel(foreignModel)
 		}
@@ -279,6 +282,7 @@ message?
 func (c *chaninterface) OnConnected(address string) {
 	_, exists := c.bootstrap[address]
 	if !exists {
+		log.Println("Missing", address)
 		// nope, doesn't need bootstrap
 		return
 	}

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -149,6 +150,33 @@ Connect this tinzenite to another peer, beginning the bootstrap process.
 */
 func (t *Tinzenite) Connect(address string) error {
 	return t.cInterface.Connect(address)
+}
+
+/*
+PrintStatus returns a formatted string of the peer status.
+*/
+func (t *Tinzenite) PrintStatus() string {
+	var out string
+	out += "Online:\n"
+	addresses, err := t.channel.FriendAddresses()
+	if err != nil {
+		out += "channel.FriendAddresses failed!"
+	} else {
+		var count int
+		for _, address := range addresses {
+			online, err := t.channel.IsOnline(address)
+			var insert string
+			if err != nil {
+				insert = "ERROR"
+			} else {
+				insert = fmt.Sprintf("%v", online)
+			}
+			out += address[:16] + " :: " + insert + "\n"
+			count++
+		}
+		out += "Total friends: " + fmt.Sprintf("%d", count)
+	}
+	return out
 }
 
 /*
