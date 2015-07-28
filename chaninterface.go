@@ -121,7 +121,6 @@ func (c *chaninterface) requestModel(address string) {
 			log.Println("ReModel:", err)
 			return
 		}
-		log.Println("Amount of update:", len(updateLists))
 		// pretend that the updatemessage came from outside here
 		for _, um := range updateLists {
 			c.remoteUpdate(address, *um)
