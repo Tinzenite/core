@@ -92,6 +92,10 @@ func (c *chaninterface) Connect(address string) error {
 	return nil
 }
 
+/*
+requestModel requests the model from another peer and upon receiving it will
+apply it to the local model. If a bootstrap is detected this will complete it.
+*/
 func (c *chaninterface) requestModel(address string) {
 	// create & modify must first fetch file
 	rm := shared.CreateRequestMessage(shared.ReModel, IDMODEL)
@@ -273,10 +277,8 @@ func (c *chaninterface) OnConnected(address string) {
 		// nope, doesn't need bootstrap
 		return
 	}
-	// initiate file transfer for peer obj
-	rm := shared.CreateRequestMessage(shared.RePeer, "")
-	c.tin.channel.Send(address, rm.String())
-	// what happens: other peer sends update message as if new file, resulting in the peer being created
+	// bootstrap
+	c.requestModel(address)
 }
 
 /*
