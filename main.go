@@ -16,14 +16,23 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 	if shared.IsTinzenite(dirpath) {
 		return nil, shared.ErrIsTinzenite
 	}
+	// flag whether we have to clean up after us
+	var failed bool
 	// make .tinzenite
 	err := shared.MakeDotTinzenite(dirpath)
 	if err != nil {
 		return nil, err
 	}
+	// if failed was set --> clean up by removing everything
+	defer func() {
+		if failed {
+			RemoveTinzenite(dirpath)
+		}
+	}()
 	// get auth data
 	auth, err := createAuthentication(dirpath, dirname, username, password)
 	if err != nil {
+		failed = true
 		return nil, err
 	}
 	// Build
@@ -35,42 +44,40 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 	// build channel
 	channel, err := channel.Create(peername, nil, tinzenite.cInterface)
 	if err != nil {
+		failed = true
 		return nil, err
 	}
 	tinzenite.channel = channel
 	// build self peer
 	address, err := channel.Address()
 	if err != nil {
+		failed = true
 		return nil, err
 	}
-	peerhash, err := shared.NewIdentifier()
+	peer, err := shared.CreatePeer(peername, address)
 	if err != nil {
+		failed = true
 		return nil, err
 	}
-	peer := &shared.Peer{
-		Name:           peername,
-		Address:        address,
-		Protocol:       shared.CmTox,
-		Identification: peerhash}
 	tinzenite.selfpeer = peer
 	tinzenite.allPeers = []*shared.Peer{peer}
 	// build model (can block for long!)
 	m, err := model.CreateModel(dirpath, peer.Identification)
 	if err != nil {
-		RemoveTinzenite(dirpath)
+		failed = true
 		return nil, err
 	}
 	tinzenite.model = m
 	// store initial copy
 	err = tinzenite.Store()
 	if err != nil {
-		RemoveTinzenite(dirpath)
+		failed = true
 		return nil, err
 	}
 	// save that this directory is now a tinzenite dir
 	err = tinzenite.storeGlobalConfig()
 	if err != nil {
-		RemoveTinzenite(dirpath)
+		failed = true
 		return nil, err
 	}
 	tinzenite.initialize()
