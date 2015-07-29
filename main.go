@@ -130,7 +130,7 @@ func ConnectTinzenite(address, localPeerName, localPath string) (*Tinzenite, err
 	if err != nil {
 		return nil, err
 	}
-	err = tinzenite.cInterface.Connect(address)
+	err = tinzenite.cInterface.StartBootstrap(address)
 	if err != nil {
 		return nil, err
 	}
