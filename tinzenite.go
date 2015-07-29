@@ -131,11 +131,6 @@ func (t *Tinzenite) Store() error {
 	if err != nil {
 		return err
 	}
-	// store bootstrap
-	err = t.cInterface.Store(t.Path)
-	if err != nil {
-		return err
-	}
 	// update model for tinzenite dir to catch above stores
 	err = t.model.PartialUpdate(t.Path + "/" + shared.TINZENITEDIR)
 	if err != nil {

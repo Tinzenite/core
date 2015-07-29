@@ -24,8 +24,6 @@ type chaninterface struct {
 	active   map[string]bool
 	recpath  string
 	temppath string
-	// stores address of peers we need to bootstrap
-	bootstrap map[string]bool
 }
 
 func createChannelInterface(t *Tinzenite) *chaninterface {
@@ -46,8 +44,7 @@ func createChannelInterface(t *Tinzenite) *chaninterface {
 		transfers: make(map[string]transfer),
 		active:    make(map[string]bool),
 		recpath:   t.Path + "/" + shared.TINZENITEDIR + "/" + shared.RECEIVINGDIR,
-		temppath:  t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR,
-		bootstrap: tempList}
+		temppath:  t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR}
 }
 
 type transfer struct {
@@ -58,17 +55,6 @@ type transfer struct {
 }
 
 type onDone func(address, path string)
-
-/*
-Store saves the bootstrap list so that it remains active over disconnects.
-*/
-func (c *chaninterface) Store(root string) error {
-	data, err := json.MarshalIndent(c.bootstrap, "", "  ")
-	if err != nil {
-		return err
-	}
-	return ioutil.WriteFile(root+"/"+shared.TINZENITEDIR+"/"+shared.LOCALDIR+"/"+shared.BOOTJSON, data, shared.FILEPERMISSIONMODE)
-}
 
 /*
 SyncModel fetches and synchronizes a remote model.
