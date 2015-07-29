@@ -57,7 +57,7 @@ type transfer struct {
 	done onDone
 }
 
-type onDone func(path string)
+type onDone func(address, path string)
 
 /*
 Store saves the bootstrap list so that it remains active over disconnects.
@@ -73,6 +73,8 @@ func (c *chaninterface) Store(root string) error {
 /*
 Connect sends a connection request and prepares for bootstrapping. NOTE: Not a
 callback method.
+
+TODO: add callback functionality here when bootstrap works
 */
 func (c *chaninterface) Connect(address string) error {
 	// send own peer
@@ -93,52 +95,21 @@ func (c *chaninterface) Connect(address string) error {
 }
 
 /*
+SyncModel fetches and synchronizes a remote model.
+*/
+func (c *chaninterface) SyncModel(address string) {
+	c.requestModel(address, c.onModelFileReceived)
+}
+
+/*
 requestModel requests the model from another peer and upon receiving it will
 apply it to the local model. If a bootstrap is detected this will complete it.
 */
-func (c *chaninterface) requestModel(address string, bootstrap bool) {
+func (c *chaninterface) requestModel(address string, f onDone) {
 	// create & modify must first fetch file
 	rm := shared.CreateRequestMessage(shared.ReModel, IDMODEL)
 	// request file and apply update on success
-	c.requestFile(address, rm, func(path string) {
-		// read model file and remove it
-		data, err := ioutil.ReadFile(path)
-		if err != nil {
-			log.Println("ReModel:", err)
-			return
-		}
-		err = os.Remove(path)
-		if err != nil {
-			log.Println("ReModel:", err)
-			// not strictly critical so no return here
-		}
-		// unmarshal
-		foreignModel := &shared.ObjectInfo{}
-		err = json.Unmarshal(data, foreignModel)
-		if err != nil {
-			log.Println("ReModel:", err)
-			return
-		}
-		// get difference in updates
-		var updateLists []*shared.UpdateMessage
-		if bootstrap {
-			updateLists, err = c.tin.model.BootstrapModel(foreignModel)
-		} else {
-			updateLists, err = c.tin.model.SyncModel(foreignModel)
-		}
-		if err != nil {
-			log.Println("ReModel:", err)
-			return
-		}
-		// pretend that the updatemessage came from outside here
-		for _, um := range updateLists {
-			c.remoteUpdate(address, *um)
-		}
-		// bootstrap --> special behaviour, so call the finish method
-		if bootstrap {
-			log.Println("Finish bootstrap here!")
-		}
-	})
+	c.requestFile(address, rm, f)
 }
 
 /*
@@ -224,7 +195,7 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 	}
 	// execute done function if it exists
 	if tran.done != nil {
-		tran.done(c.temppath + "/" + filename)
+		tran.done(address, c.temppath+"/"+filename)
 	}
 }
 
@@ -288,7 +259,39 @@ func (c *chaninterface) OnConnected(address string) {
 		return
 	}
 	// bootstrap
-	c.requestModel(address, true)
+	c.requestModel(address, func(address, path string) {
+		// read model file and remove it
+		data, err := ioutil.ReadFile(path)
+		if err != nil {
+			log.Println("ReModel:", err)
+			return
+		}
+		err = os.Remove(path)
+		if err != nil {
+			log.Println("ReModel:", err)
+			// not strictly critical so no return here
+		}
+		// unmarshal
+		foreignModel := &shared.ObjectInfo{}
+		err = json.Unmarshal(data, foreignModel)
+		if err != nil {
+			log.Println("ReModel:", err)
+			return
+		}
+		// get difference in updates
+		var updateLists []*shared.UpdateMessage
+		updateLists, err = c.tin.model.BootstrapModel(foreignModel)
+		if err != nil {
+			log.Println("ReModel:", err)
+			return
+		}
+		// pretend that the updatemessage came from outside here
+		for _, um := range updateLists {
+			c.remoteUpdate(address, *um)
+		}
+		// bootstrap --> special behaviour, so call the finish method
+		log.Println("Finish bootstrap here!")
+	})
 }
 
 /*
@@ -447,7 +450,7 @@ func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
 	// create & modify must first fetch file
 	rm := shared.CreateRequestMessage(shared.ReObject, msg.Object.Identification)
 	// request file and apply update on success
-	c.requestFile(address, rm, func(path string) {
+	c.requestFile(address, rm, func(address, path string) {
 		// rename to correct name for model
 		err := os.Rename(path, c.temppath+"/"+rm.Identification)
 		if err != nil {
@@ -461,6 +464,41 @@ func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
 		}
 		// done
 	})
+}
+
+/*
+onModelFileReceived is called whenever a normal model sync is supposed to be
+applied.
+*/
+func (c *chaninterface) onModelFileReceived(address, path string) {
+	// read model file and remove it
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		log.Println("ReModel:", err)
+		return
+	}
+	err = os.Remove(path)
+	if err != nil {
+		log.Println("ReModel:", err)
+		// not strictly critical so no return here
+	}
+	// unmarshal
+	foreignModel := &shared.ObjectInfo{}
+	err = json.Unmarshal(data, foreignModel)
+	if err != nil {
+		log.Println("ReModel:", err)
+		return
+	}
+	// get difference in updates
+	updateLists, err := c.tin.model.SyncModel(foreignModel)
+	if err != nil {
+		log.Println("ReModel:", err)
+		return
+	}
+	// pretend that the updatemessage came from outside here
+	for _, um := range updateLists {
+		c.remoteUpdate(address, *um)
+	}
 }
 
 /*
