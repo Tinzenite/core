@@ -27,18 +27,6 @@ type chaninterface struct {
 }
 
 func createChannelInterface(t *Tinzenite) *chaninterface {
-	tempList := make(map[string]bool)
-	path := t.Path + "/" + shared.TINZENITEDIR + "/" + shared.LOCALDIR + "/" + shared.BOOTJSON
-	_, err := os.Lstat(path)
-	if err == nil {
-		data, err := ioutil.ReadFile(path)
-		if err == nil {
-			err := json.Unmarshal(data, &tempList)
-			if err != nil {
-				log.Println("Load:", err)
-			}
-		}
-	}
 	return &chaninterface{
 		tin:       t,
 		transfers: make(map[string]transfer),
