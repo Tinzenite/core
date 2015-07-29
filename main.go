@@ -123,22 +123,6 @@ func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
 }
 
 /*
-ConnectTinzenite bootstraps this peer to an existing directory network.
-*/
-func ConnectTinzenite(address, localPeerName, localPath string) (*Tinzenite, error) {
-	tinzenite, err := CreateTinzenite("BOOTSTRAP", localPath, localPeerName, "username", "password")
-	if err != nil {
-		return nil, err
-	}
-	err = tinzenite.cInterface.StartBootstrap(address)
-	if err != nil {
-		return nil, err
-	}
-	/*TODO check username and password on success?*/
-	return tinzenite, nil
-}
-
-/*
 RemoveTinzenite directory. Specifically leaves all user files but removes all
 Tinzenite specific items.
 */

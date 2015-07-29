@@ -168,6 +168,61 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 }
 
 /*
+CallbackNewConnection is called when a bootstrap request comes in. This means
+that the OTHER peer is bootstrapping: all we need to do here is save the other's
+peer information and include it in the network if allowed.
+*/
+func (c *chaninterface) OnNewConnection(address, message string) {
+	if c.tin.peerValidation == nil {
+		log.Println("PeerValidation() callback is unimplemented, can not connect!")
+		return
+	}
+	// trusted peer flag
+	var trusted bool
+	// try to read peer from message
+	peer := &shared.Peer{}
+	err := json.Unmarshal([]byte(message), peer)
+	if err != nil {
+		// this may happen for debug purposes etc
+		peer = nil
+		trusted = false
+		log.Println("Received non JSON message:", message)
+	} else {
+		trusted = true
+	}
+	// check if allowed
+	/*TODO peer.trusted should be used to ensure that all is okay. For now all are trusted by default until encryption is implemented.*/
+	if !c.tin.peerValidation(address, trusted) {
+		log.Println("Refusing connection.")
+		return
+	}
+	// if yes, add connection
+	err = c.tin.channel.AcceptConnection(address)
+	if err != nil {
+		log.Println("Channel:", err)
+		return
+	}
+	if peer == nil {
+		log.Println("No legal peer information could be read! Peer will be considered passive.")
+		return
+	}
+	// ensure that address is correct by overwritting sent address with real one
+	peer.Address = address
+	// add peer to local list
+	c.tin.allPeers = append(c.tin.allPeers, peer)
+	// try store new peer to disk
+	_ = c.tin.Store()
+}
+
+/*
+OnConnected is called whenever a peer comes online. Starts authentication process.
+*/
+func (c *chaninterface) OnConnected(address string) {
+	log.Println(address, "came online!")
+	/*TODO implement authentication!*/
+}
+
+/*
 CallbackMessage is called when a message is received.
 */
 func (c *chaninterface) OnMessage(address, message string) {
