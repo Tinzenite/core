@@ -1,7 +1,5 @@
 package core
 
-import "github.com/tinzenite/shared"
-
 /*
 Naming of conflicting files.
 
@@ -14,6 +12,3 @@ const (
 	MODEL   = ".MODEL"
 	IDMODEL = "MODEL"
 )
-
-// .tinignore content for .tinzenite directory
-const TINDIRIGNORE = "# DO NOT MODIFY!\n/" + shared.LOCALDIR + "\n/" + shared.TEMPDIR + "\n/" + shared.RECEIVINGDIR

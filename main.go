@@ -17,7 +17,7 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 		return nil, shared.ErrIsTinzenite
 	}
 	// make .tinzenite
-	err = shared.MakeDotTinzenite(dirpath)
+	err := shared.MakeDotTinzenite(dirpath)
 	if err != nil {
 		return nil, err
 	}
