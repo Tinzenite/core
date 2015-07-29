@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/user"
@@ -284,21 +283,6 @@ func (t *Tinzenite) storeGlobalConfig() error {
 	}
 	// ensure that the file is valid
 	return shared.PrettifyDirectoryList()
-}
-
-/*
-makeDotTinzenite creates the directory structure for the .tinzenite directory
-including the .tinignore file required for it.
-*/
-func (t *Tinzenite) makeDotTinzenite() error {
-	root := t.Path + "/" + shared.TINZENITEDIR
-	// build directory structure
-	err := shared.MakeDirectories(root, shared.ORGDIR+"/"+shared.PEERSDIR, shared.TEMPDIR, shared.REMOVEDIR, shared.LOCALDIR, shared.RECEIVINGDIR)
-	if err != nil {
-		return err
-	}
-	// write required .tinignore file
-	return ioutil.WriteFile(root+"/"+shared.TINIGNORE, []byte(TINDIRIGNORE), shared.FILEPERMISSIONMODE)
 }
 
 /*

@@ -16,6 +16,11 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 	if shared.IsTinzenite(dirpath) {
 		return nil, shared.ErrIsTinzenite
 	}
+	// make .tinzenite
+	err = shared.MakeDotTinzenite(dirpath)
+	if err != nil {
+		return nil, err
+	}
 	// get auth data
 	auth, err := createAuthentication(dirpath, dirname, username, password)
 	if err != nil {
@@ -49,11 +54,6 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 		Identification: peerhash}
 	tinzenite.selfpeer = peer
 	tinzenite.allPeers = []*shared.Peer{peer}
-	// make .tinzenite so that model can work
-	err = tinzenite.makeDotTinzenite()
-	if err != nil {
-		return nil, err
-	}
 	// build model (can block for long!)
 	m, err := model.CreateModel(dirpath, peer.Identification)
 	if err != nil {
