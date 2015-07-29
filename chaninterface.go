@@ -89,7 +89,6 @@ func (c *chaninterface) Connect(address string) error {
 	// format to legal address
 	address = strings.ToLower(address)[:64]
 	c.bootstrap[address] = true
-	log.Println("Bootstrapped", address)
 	return nil
 }
 
@@ -124,8 +123,6 @@ func (c *chaninterface) requestModel(address string, bootstrap bool) {
 		var updateLists []*shared.UpdateMessage
 		if bootstrap {
 			updateLists, err = c.tin.model.BootstrapModel(foreignModel)
-			/*TODO this is ouch. Need to restart TINZENITE without STORE!*/
-			log.Println("RESTART TINZENITE WITHOUT STORE!")
 		} else {
 			updateLists, err = c.tin.model.SyncModel(foreignModel)
 		}
@@ -136,6 +133,10 @@ func (c *chaninterface) requestModel(address string, bootstrap bool) {
 		// pretend that the updatemessage came from outside here
 		for _, um := range updateLists {
 			c.remoteUpdate(address, *um)
+		}
+		// bootstrap --> special behaviour, so call the finish method
+		if bootstrap {
+			log.Println("Finish bootstrap here!")
 		}
 	})
 }
@@ -318,7 +319,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 			}
 			if msg.Request == shared.ReModel {
 				log.Println("Received model message!")
-				c.onModelMessage(address, *msg)
+				c.onRequestModelMessage(address, *msg)
 			} else {
 				log.Println("Received request message!")
 				c.onRequestMessage(address, *msg)
@@ -403,7 +404,7 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 	}
 }
 
-func (c *chaninterface) onModelMessage(address string, msg shared.RequestMessage) {
+func (c *chaninterface) onRequestModelMessage(address string, msg shared.RequestMessage) {
 	// get model
 	objModel, err := c.tin.model.Read()
 	if err != nil {

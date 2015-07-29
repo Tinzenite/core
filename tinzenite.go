@@ -146,13 +146,6 @@ func (t *Tinzenite) Store() error {
 }
 
 /*
-Connect this tinzenite to another peer, beginning the bootstrap process.
-*/
-func (t *Tinzenite) Connect(address string) error {
-	return t.cInterface.Connect(address)
-}
-
-/*
 PrintStatus returns a formatted string of the peer status.
 */
 func (t *Tinzenite) PrintStatus() string {
@@ -225,7 +218,6 @@ func (t *Tinzenite) merge(msg *shared.UpdateMessage) error {
 		if stin.Content == msg.Object.Content {
 			log.Println("Core:", "Merge not required as updates are in sync!")
 			// so all we need to do is apply the version update
-			/*TODO: we need applymodify WITHOUT the fetching of the file...*/
 			t.model.ApplyModify(relPath, &msg.Object)
 			return nil
 		}
@@ -249,7 +241,6 @@ func (t *Tinzenite) merge(msg *shared.UpdateMessage) error {
 	msg.Operation = shared.OpCreate
 	msg.Object.Path = relPath.SubPath() + REMOTE
 	msg.Object.Name = relPath.LastElement() + REMOTE
-	/*TODO what of the id? For now to be sure: new one.*/
 	oldID := msg.Object.Identification
 	msg.Object.Identification, err = shared.NewIdentifier()
 	if err != nil {
