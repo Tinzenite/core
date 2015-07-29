@@ -1,8 +1,6 @@
 package core
 
 import (
-	"os"
-
 	"github.com/tinzenite/channel"
 	"github.com/tinzenite/model"
 	"github.com/tinzenite/shared"
@@ -26,7 +24,7 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 	// if failed was set --> clean up by removing everything
 	defer func() {
 		if failed {
-			RemoveTinzenite(dirpath)
+			shared.RemoveDotTinzenite(dirpath)
 		}
 	}()
 	// get auth data
@@ -127,16 +125,4 @@ func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
 	t.channel = channel
 	t.initialize()
 	return t, nil
-}
-
-/*
-RemoveTinzenite directory. Specifically leaves all user files but removes all
-Tinzenite specific items.
-*/
-func RemoveTinzenite(path string) error {
-	if !shared.IsTinzenite(path) {
-		return shared.ErrNotTinzenite
-	}
-	/* TODO remove from directory list*/
-	return os.RemoveAll(path + "/" + shared.TINZENITEDIR)
 }
