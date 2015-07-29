@@ -49,7 +49,7 @@ SyncModel fetches and synchronizes a remote model.
 */
 func (c *chaninterface) SyncModel(address string) {
 	// create & modify must first fetch file
-	rm := shared.CreateRequestMessage(shared.ReModel, IDMODEL)
+	rm := shared.CreateRequestMessage(shared.ReModel, shared.IDMODEL)
 	// request file and apply update on success
 	c.requestFile(address, rm, c.onModelFileReceived)
 }
@@ -337,7 +337,7 @@ func (c *chaninterface) onRequestModelMessage(address string, msg shared.Request
 		}
 	}
 	// send model as file. NOTE: name that is sent is not filename but IDMODEL
-	err = c.sendFile(address, c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.TEMPDIR+"/"+filename, IDMODEL, removeTemp)
+	err = c.sendFile(address, c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.TEMPDIR+"/"+filename, shared.IDMODEL, removeTemp)
 	if err != nil {
 		log.Println(err)
 		return

@@ -60,7 +60,7 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 	tinzenite.selfpeer = peer
 	tinzenite.allPeers = []*shared.Peer{peer}
 	// build model (can block for long!)
-	m, err := model.CreateModel(dirpath, peer.Identification)
+	m, err := model.Create(dirpath, peer.Identification)
 	if err != nil {
 		failed = true
 		return nil, err
@@ -98,7 +98,7 @@ func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
 	}
 	t.auth = auth
 	// load model
-	model, err := model.LoadModel(dirpath)
+	model, err := model.Load(dirpath)
 	if err != nil {
 		return nil, err
 	}
