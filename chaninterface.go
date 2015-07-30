@@ -294,18 +294,21 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 			log.Println("Model:", err)
 			return
 		}
-		/*TODO maybe this should be modify?*/
 		um := shared.CreateUpdateMessage(shared.OpCreate, *obj)
 		c.tin.channel.Send(address, um.String())
 		return
 	}
-	// get full path from model
-	path, err := c.tin.model.FilePath(msg.Identification)
+	// get obj for path and directory
+	obj, err := c.tin.model.GetInfoFrom(msg.Identification)
 	if err != nil {
 		log.Println("Model: ", err)
 		return
 	}
-	err = c.sendFile(address, path, msg.Identification, nil)
+	if obj.Directory {
+		log.Println("WARNING: request is for directory, ignoring!")
+		return
+	}
+	err = c.sendFile(address, c.tin.model.Root+"/"+obj.Path, msg.Identification, nil)
 	if err != nil {
 		log.Println(err)
 	}
