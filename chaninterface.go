@@ -22,18 +22,20 @@ type chaninterface struct {
 	// map of transfer objects, referenced by the object id
 	transfers map[string]transfer
 	// active stores all active file transfers so that we avoid getting multiple files from one peer at once
-	active   map[string]bool
-	recpath  string
-	temppath string
+	active       map[string]bool
+	recpath      string
+	temppath     string
+	AllowLogging bool
 }
 
 func createChannelInterface(t *Tinzenite) *chaninterface {
 	return &chaninterface{
-		tin:       t,
-		transfers: make(map[string]transfer),
-		active:    make(map[string]bool),
-		recpath:   t.Path + "/" + shared.TINZENITEDIR + "/" + shared.RECEIVINGDIR,
-		temppath:  t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR}
+		tin:          t,
+		transfers:    make(map[string]transfer),
+		active:       make(map[string]bool),
+		recpath:      t.Path + "/" + shared.TINZENITEDIR + "/" + shared.RECEIVINGDIR,
+		temppath:     t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR,
+		AllowLogging: true}
 }
 
 type transfer struct {
@@ -66,7 +68,7 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 	key := address + ":" + rm.Identification
 	if tran, exists := c.transfers[key]; exists {
 		if time.Since(tran.start) > transferTimeout {
-			log.Println("Retransmiting transfer.")
+			c.log("Retransmiting transfer.")
 			// update
 			tran.start = time.Now()
 			c.transfers[key] = tran
@@ -98,16 +100,16 @@ func (c *chaninterface) OnAllowFile(address, identification string) (bool, strin
 	key := address + ":" + identification
 	tran, exists := c.transfers[key]
 	if !exists {
-		log.Println("Transfer not authorized for", identification, "!")
+		c.log("Transfer not authorized for", identification, "!")
 		return false, ""
 	}
 	if !shared.Contains(tran.peers, address) {
-		log.Println("Peer not authorized for transfer!")
+		c.log("Peer not authorized for transfer!")
 		return false, ""
 	}
 	// check timeout
 	if time.Since(tran.start) > transferTimeout {
-		log.Println("Transfer timed out!")
+		c.log("Transfer timed out!")
 		delete(c.transfers, key)
 		return false, ""
 	}
@@ -131,7 +133,7 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 	check := strings.Split(filename, ".")[0]
 	identification := strings.Split(filename, ".")[1]
 	if check != address {
-		log.Println("Filename is mismatched!")
+		c.log("Filename is mismatched!")
 		return
 	}
 	/*TODO check request if file is delta / must be decrypted before applying to model*/
@@ -139,13 +141,13 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 	key := address + ":" + identification
 	tran, exists := c.transfers[key]
 	if !exists {
-		log.Println("Transfer doesn't even exist anymore! Something bad went wrong...")
+		c.log("Transfer doesn't even exist anymore! Something bad went wrong...")
 		// remove from transfers
 		delete(c.transfers, identification)
 		// remove any broken remaining temp files
 		err := os.Remove(c.recpath + "/" + filename)
 		if err != nil {
-			log.Println("Failed to remove broken transfer file: " + err.Error())
+			c.log("Failed to remove broken transfer file: " + err.Error())
 		}
 		return
 	}
@@ -154,7 +156,7 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 	// move from receiving to temp
 	err := os.Rename(c.recpath+"/"+filename, c.temppath+"/"+filename)
 	if err != nil {
-		log.Println("Failed to move file to temp: " + err.Error())
+		c.log("Failed to move file to temp: " + err.Error())
 		return
 	}
 	// execute done function if it exists
@@ -170,7 +172,7 @@ peer information and include it in the network if allowed.
 */
 func (c *chaninterface) OnNewConnection(address, message string) {
 	if c.tin.peerValidation == nil {
-		log.Println("PeerValidation() callback is unimplemented, can not connect!")
+		c.warn("PeerValidation() callback is unimplemented, can not connect!")
 		return
 	}
 	// trusted peer flag
@@ -182,24 +184,24 @@ func (c *chaninterface) OnNewConnection(address, message string) {
 		// this may happen for debug purposes etc
 		peer = nil
 		trusted = false
-		log.Println("Received non JSON message:", message)
+		c.log("Received non JSON message:", message)
 	} else {
 		trusted = true
 	}
 	// check if allowed
 	/*TODO peer.trusted should be used to ensure that all is okay. For now all are trusted by default until encryption is implemented.*/
 	if !c.tin.peerValidation(address, trusted) {
-		log.Println("Refusing connection.")
+		c.log("Refusing connection.")
 		return
 	}
 	// if yes, add connection
 	err = c.tin.channel.AcceptConnection(address)
 	if err != nil {
-		log.Println("Channel:", err)
+		c.log("Channel:", err.Error())
 		return
 	}
 	if peer == nil {
-		log.Println("No legal peer information could be read! Peer will be considered passive.")
+		c.warn("No legal peer information could be read! Peer will be considered passive.")
 		return
 	}
 	// ensure that address is correct by overwritting sent address with real one
@@ -214,7 +216,7 @@ func (c *chaninterface) OnNewConnection(address, message string) {
 OnConnected is called whenever a peer comes online. Starts authentication process.
 */
 func (c *chaninterface) OnConnected(address string) {
-	log.Println(address, "came online!")
+	c.log(address, "came online!")
 	/*TODO implement authentication! Also in Bootstrap...*/
 }
 
@@ -234,7 +236,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-			log.Println("Received update message!", msg.Operation, msg.Object.Identification)
+			c.log("Received update message!", msg.Operation.String(), msg.Object.Path)
 			c.onUpdateMessage(address, *msg)
 		case shared.MsgRequest:
 			// read request message
@@ -245,10 +247,10 @@ func (c *chaninterface) OnMessage(address, message string) {
 				return
 			}
 			if msg.Request == shared.ReModel {
-				log.Println("Received model message!")
+				c.log("Received model message!")
 				c.onRequestModelMessage(address, *msg)
 			} else {
-				log.Println("Received request message!", msg.Request, msg.Identification)
+				c.log("Received request message!", msg.Request.String(), msg.Identification)
 				c.onRequestMessage(address, *msg)
 			}
 		default:
@@ -260,7 +262,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 	// if unmarshal didn't work check for plain commands:
 	switch message {
 	default:
-		log.Println("Received", message)
+		c.log("Received", message)
 		c.tin.channel.Send(address, "ACK")
 	}
 }
@@ -268,18 +270,25 @@ func (c *chaninterface) OnMessage(address, message string) {
 func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage) {
 	// check if we even have to apply it to avoid recursive requesting!
 	if c.tin.model.HasUpdate(&msg) {
-		log.Println("Update is known, ignoring!")
+		c.log("Update is known, ignoring!")
 		return
 	}
+	// if directory we don't want to request anything since we can directly apply it
+	if msg.Object.Directory {
+		c.applyUpdateWithMerge(msg)
+		return
+	}
+	// HERE only files
 	// apply / fetch and apply
 	if op := msg.Operation; op == shared.OpCreate || op == shared.OpModify {
 		// fetch and apply file
 		c.remoteUpdate(address, msg)
 	} else if op == shared.OpRemove {
+		log.Println("REMOTE REMOVE ME THINKGS", msg.String())
 		// remove is without file transfer, so directly apply
 		c.applyUpdateWithMerge(msg)
 	} else {
-		log.Println("Unknown operation received, ignoring update message!")
+		c.warn("Unknown operation received, ignoring update message!")
 	}
 }
 
@@ -291,7 +300,7 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 		fullPath := shared.CreatePath(c.tin.model.Root, peerPath)
 		obj, err := c.tin.model.GetInfo(fullPath)
 		if err != nil {
-			log.Println("onRequestMessage:", err)
+			c.log("onRequestMessage:", err.Error())
 			return
 		}
 		um := shared.CreateUpdateMessage(shared.OpCreate, *obj)
@@ -301,16 +310,16 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 	// get obj for path and directory
 	obj, err := c.tin.model.GetInfoFrom(msg.Identification)
 	if err != nil {
-		log.Println("Failed to locate object for", msg.Identification)
+		c.log("Failed to locate object for", msg.Identification)
 		return
 	}
 	if obj.Directory {
-		log.Println("WARNING: request is for directory, ignoring!")
+		c.warn("request is for directory, ignoring!")
 		return
 	}
 	err = c.sendFile(address, c.tin.model.Root+"/"+obj.Path, msg.Identification, nil)
 	if err != nil {
-		log.Println(err)
+		c.log(err.Error())
 	}
 }
 
@@ -318,33 +327,33 @@ func (c *chaninterface) onRequestModelMessage(address string, msg shared.Request
 	// get model
 	objModel, err := c.tin.model.Read()
 	if err != nil {
-		log.Println(err)
+		c.log("model.Read():", err.Error())
 		return
 	}
 	// to JSON
 	data, err := json.MarshalIndent(objModel, "", "  ")
 	if err != nil {
-		log.Println(err)
+		c.log("Json:", err.Error())
 		return
 	}
 	filename := address + MODEL
 	// write to file in temporary
 	err = ioutil.WriteFile(c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.TEMPDIR+"/"+filename, data, shared.FILEPERMISSIONMODE)
 	if err != nil {
-		log.Println(err)
+		c.log("WriteFile:", err.Error())
 		return
 	}
 	// need to remove temp independent of whether success or not
 	removeTemp := func(success bool) {
 		err := os.Remove(c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR + "/" + filename)
 		if err != nil {
-			log.Println("RemoveTemp:", err)
+			c.log("RemoveTemp:", err.Error())
 		}
 	}
 	// send model as file. NOTE: name that is sent is not filename but IDMODEL
 	err = c.sendFile(address, c.tin.Path+"/"+shared.TINZENITEDIR+"/"+shared.TEMPDIR+"/"+filename, shared.IDMODEL, removeTemp)
 	if err != nil {
-		log.Println(err)
+		c.log("SendFile:", err.Error())
 		return
 	}
 }
@@ -361,13 +370,13 @@ func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
 		// rename to correct name for model
 		err := os.Rename(path, c.temppath+"/"+rm.Identification)
 		if err != nil {
-			log.Println("Failed to move file to temp: " + err.Error())
+			c.log("Failed to move file to temp: " + err.Error())
 			return
 		}
 		// apply
 		err = c.applyUpdateWithMerge(msg)
 		if err != nil {
-			log.Println("File application error: " + err.Error())
+			c.log("File application error: " + err.Error())
 		}
 		// done
 	})
@@ -381,7 +390,7 @@ func (c *chaninterface) onModelFileReceived(address, path string) {
 	// read model file and remove it
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
-		log.Println("ReModel:", err)
+		c.log("ReModel:", err.Error())
 		return
 	}
 	err = os.Remove(path)
@@ -441,4 +450,24 @@ func (c *chaninterface) applyUpdateWithMerge(msg shared.UpdateMessage) error {
 		}
 	}
 	return nil
+}
+
+/*
+Log function that respects the AllowLogging flag.
+*/
+func (c *chaninterface) log(msg ...string) {
+	if c.AllowLogging {
+		toPrint := []string{"ChanInterface:"}
+		toPrint = append(toPrint, msg...)
+		log.Println(strings.Join(toPrint, " "))
+	}
+}
+
+/*
+Warn function.
+*/
+func (c *chaninterface) warn(msg ...string) {
+	toPrint := []string{"ChanInterface:", "WARNING:"}
+	toPrint = append(toPrint, msg...)
+	log.Println(strings.Join(toPrint, " "))
 }
