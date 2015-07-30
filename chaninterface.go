@@ -301,7 +301,7 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 	// get obj for path and directory
 	obj, err := c.tin.model.GetInfoFrom(msg.Identification)
 	if err != nil {
-		log.Println("onRequestMessage: ", err)
+		log.Println("Failed to locate object for", msg.Identification)
 		return
 	}
 	if obj.Directory {

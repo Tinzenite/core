@@ -167,6 +167,40 @@ func (t *Tinzenite) PrintStatus() string {
 }
 
 /*
+DisconnectPeer does exactly that. NOTE: this is a passive action and not due
+anything except remove the peer from the network. The peer is not further
+notified.
+
+TODO: maybe not use name but Identification?
+*/
+func (t *Tinzenite) DisconnectPeer(peerName string) {
+	var newPeers []*shared.Peer
+	for _, peer := range t.allPeers {
+		if t.selfpeer.Identification == peer.Identification {
+			continue
+		}
+		if peer.Name == peerName {
+			log.Println("Removing", peer.Name, "at", peer.Address[:8])
+			// delete peer file
+			path := shared.CreatePath(t.Path, shared.TINZENITEDIR+"/"+shared.ORGDIR+"/"+shared.PEERSDIR+"/"+peer.Identification+shared.ENDING)
+			err := t.model.ApplyRemove(path, nil)
+			if err != nil {
+				log.Println("DisconnectPeer:", err)
+			}
+			// remove from channel
+			err = t.channel.RemoveConnection(peer.Address)
+			if err != nil {
+				log.Println("DisconnectPeer:", err)
+			}
+			// continue does not readd to tinzenite, removing the reference to it
+			continue
+		}
+		newPeers = append(newPeers, peer)
+	}
+	t.allPeers = newPeers
+}
+
+/*
 applyPeers loads all peers and readies the communication channel accordingly.
 */
 func (t *Tinzenite) applyPeers() error {
