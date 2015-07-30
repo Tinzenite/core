@@ -1,5 +1,12 @@
 package core
 
+import "time"
+
+/*
+transferTimeout is the time where a file transfer is accepted after a request.
+*/
+const transferTimeout = 5 * time.Second
+
 /*
 Naming of conflicting files.
 

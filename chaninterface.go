@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/tinzenite/channel"
 	"github.com/tinzenite/shared"
@@ -36,6 +37,8 @@ func createChannelInterface(t *Tinzenite) *chaninterface {
 }
 
 type transfer struct {
+	// start time of transfer for timeout reasons
+	start time.Time
 	// peers stores the addresses of all known peers that have the file update
 	peers []string
 	// function to execute once the file has been received
@@ -61,13 +64,24 @@ when the transfer was successful or not. NOTE: only f may be nil.
 func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f onDone) error {
 	// build key
 	key := address + ":" + rm.Identification
-	if _, exists := c.transfers[key]; exists {
+	if tran, exists := c.transfers[key]; exists {
+		if time.Since(tran.start) > transferTimeout {
+			log.Println("Retransmiting transfer.")
+			// update
+			tran.start = time.Now()
+			c.transfers[key] = tran
+			// retransmit
+			return c.tin.channel.Send(address, rm.String())
+		}
 		log.Println("TODO: IGNORING multiple request for", rm.Identification)
 		/*TODO implement that if version higher cancel old and restart new, additional peers*/
 		return shared.ErrUnsupported
 	}
 	// create new transfer
-	tran := transfer{peers: []string{address}, done: f}
+	tran := transfer{
+		start: time.Now(),
+		peers: []string{address},
+		done:  f}
 	c.transfers[key] = tran
 	/*TODO send request to only one underutilized peer at once*/
 	// FOR NOW: just get it from whomever send the update
@@ -89,6 +103,12 @@ func (c *chaninterface) OnAllowFile(address, identification string) (bool, strin
 	}
 	if !shared.Contains(tran.peers, address) {
 		log.Println("Peer not authorized for transfer!")
+		return false, ""
+	}
+	// check timeout
+	if time.Since(tran.start) > transferTimeout {
+		log.Println("Transfer timed out!")
+		delete(c.transfers, key)
 		return false, ""
 	}
 	// here accept transfer
