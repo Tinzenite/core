@@ -129,6 +129,8 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 		}
 		return
 	}
+	// remove transfer
+	delete(c.transfers, key)
 	// move from receiving to temp
 	err := os.Rename(c.recpath+"/"+filename, c.temppath+"/"+filename)
 	if err != nil {
@@ -193,7 +195,7 @@ OnConnected is called whenever a peer comes online. Starts authentication proces
 */
 func (c *chaninterface) OnConnected(address string) {
 	log.Println(address, "came online!")
-	/*TODO implement authentication!*/
+	/*TODO implement authentication! Also in Bootstrap...*/
 }
 
 /*
@@ -212,7 +214,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-			log.Println("Received update message!", msg.Operation)
+			log.Println("Received update message!", msg.Operation, msg.Object.Identification)
 			c.onUpdateMessage(address, *msg)
 		case shared.MsgRequest:
 			// read request message
@@ -226,7 +228,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println("Received model message!")
 				c.onRequestModelMessage(address, *msg)
 			} else {
-				log.Println("Received request message!")
+				log.Println("Received request message!", msg.Request, msg.Identification)
 				c.onRequestMessage(address, *msg)
 			}
 		default:
@@ -237,32 +239,6 @@ func (c *chaninterface) OnMessage(address, message string) {
 	}
 	// if unmarshal didn't work check for plain commands:
 	switch message {
-	case "showrequest":
-		obj, _ := c.tin.model.GetInfo(shared.CreatePath(c.tin.Path, "Damned Society - Sunny on Sunday.mp3"))
-		rm := shared.CreateRequestMessage(shared.ReObject, obj.Identification)
-		c.tin.send(address, rm.String())
-	case "showmodelrequest":
-		rm := shared.CreateRequestMessage(shared.ReModel, "model")
-		c.tin.send(address, rm.String())
-	case "showpeerupdate":
-		/*NOTE: Will only work as long as that peer file exists. For bootstrap testing only!*/
-		/*TODO: file name != ident... how do I fix this?*/
-		fullPath := shared.CreatePath(c.tin.model.Root, "58f9432a9540f536.json")
-		obj, err := c.tin.model.GetInfo(fullPath)
-		if err != nil {
-			log.Println("Model:", err)
-			return
-		}
-		// update path to point correctly
-		obj.Path = shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR + "/" + obj.Name
-		// random identifier (would oc actually be real one, but for now...)
-		obj.Identification, _ = shared.NewIdentifier()
-		um := shared.CreateUpdateMessage(shared.OpCreate, *obj)
-		c.tin.channel.Send(address, um.String())
-	case "showremove":
-		obj, _ := c.tin.model.GetInfo(shared.CreatePath(c.tin.Path, "remove.me"))
-		um := shared.CreateUpdateMessage(shared.OpRemove, *obj)
-		c.tin.channel.Send(address, um.String())
 	default:
 		log.Println("Received", message)
 		c.tin.channel.Send(address, "ACK")
@@ -270,6 +246,12 @@ func (c *chaninterface) OnMessage(address, message string) {
 }
 
 func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage) {
+	// check if we even have to apply it to avoid recursive requesting!
+	if c.tin.model.HasUpdate(&msg) {
+		log.Println("Update is known, ignoring!")
+		return
+	}
+	// apply / fetch and apply
 	if op := msg.Operation; op == shared.OpCreate || op == shared.OpModify {
 		// fetch and apply file
 		c.remoteUpdate(address, msg)
@@ -401,6 +383,7 @@ func (c *chaninterface) onModelFileReceived(address, path string) {
 	for _, um := range updateLists {
 		c.remoteUpdate(address, *um)
 	}
+	log.Println("ReModel: model file applied!")
 }
 
 /*
