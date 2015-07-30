@@ -291,7 +291,7 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 		fullPath := shared.CreatePath(c.tin.model.Root, peerPath)
 		obj, err := c.tin.model.GetInfo(fullPath)
 		if err != nil {
-			log.Println("Model:", err)
+			log.Println("onRequestMessage:", err)
 			return
 		}
 		um := shared.CreateUpdateMessage(shared.OpCreate, *obj)
@@ -301,7 +301,7 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 	// get obj for path and directory
 	obj, err := c.tin.model.GetInfoFrom(msg.Identification)
 	if err != nil {
-		log.Println("Model: ", err)
+		log.Println("onRequestMessage: ", err)
 		return
 	}
 	if obj.Directory {
