@@ -260,6 +260,15 @@ func (c *chaninterface) OnMessage(address, message string) {
 		return
 	}
 	// if unmarshal didn't work check for plain commands:
+	if strings.HasPrefix(message, "rm") {
+		id := strings.Split(message, " ")[1]
+		err := c.tin.model.UpdateRemovalDir(id)
+		if err != nil {
+			log.Println("ERROR")
+		} else {
+			log.Println("DONE")
+		}
+	}
 	switch message {
 	default:
 		c.log("Received", message)
@@ -284,7 +293,6 @@ func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage
 		// fetch and apply file
 		c.remoteUpdate(address, msg)
 	} else if op == shared.OpRemove {
-		log.Println("REMOTE REMOVE ME THINKGS", msg.String())
 		// remove is without file transfer, so directly apply
 		c.applyUpdateWithMerge(msg)
 	} else {
