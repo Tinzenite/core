@@ -24,6 +24,7 @@ type Tinzenite struct {
 	allPeers       []*shared.Peer
 	model          *model.Model
 	sendChannel    chan shared.UpdateMessage
+	muteFlag       bool
 	stop           chan bool
 	wg             sync.WaitGroup
 	peerValidation PeerValidation
@@ -35,8 +36,12 @@ remotely if other peers are connected. NOTE: All Sync{|Local|Remote} methods can
 block for a potentially long time, especially when first run!
 */
 func (t *Tinzenite) Sync() error {
+	// mute updates because we'll sync models later
+	t.muteFlag = true
 	// first ensure that local model is up to date
 	err := t.SyncLocal()
+	// and reset
+	t.muteFlag = false
 	if err != nil {
 		return err
 	}
@@ -341,6 +346,10 @@ func (t *Tinzenite) background() {
 			t.wg.Done()
 			return
 		case msg := <-t.sendChannel:
+			// if muted don't send updates
+			if t.muteFlag {
+				continue
+			}
 			online, err := t.channel.OnlineAddresses()
 			if err != nil {
 				log.Println("Background:", err)
