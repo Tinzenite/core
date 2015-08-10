@@ -38,10 +38,10 @@ block for a potentially long time, especially when first run!
 func (t *Tinzenite) Sync() error {
 	// mute updates because we'll sync models later
 	t.muteFlag = true
+	// defer setting it back guaranteed
+	defer func() { t.muteFlag = false }()
 	// first ensure that local model is up to date
 	err := t.SyncLocal()
-	// and reset
-	t.muteFlag = false
 	if err != nil {
 		return err
 	}
