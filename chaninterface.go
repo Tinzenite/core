@@ -260,15 +260,6 @@ func (c *chaninterface) OnMessage(address, message string) {
 		return
 	}
 	// if unmarshal didn't work check for plain commands:
-	if strings.HasPrefix(message, "rm") {
-		id := strings.Split(message, " ")[1]
-		err := c.tin.model.UpdateRemovalDir(id)
-		if err != nil {
-			log.Println("ERROR")
-		} else {
-			log.Println("DONE")
-		}
-	}
 	switch message {
 	default:
 		c.log("Received", message)
