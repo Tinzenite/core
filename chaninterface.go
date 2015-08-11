@@ -68,14 +68,14 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 	key := address + ":" + rm.Identification
 	if tran, exists := c.transfers[key]; exists {
 		if time.Since(tran.start) > transferTimeout {
-			c.log("Retransmiting transfer.")
+			// c.log("Retransmiting transfer.")
 			// update
 			tran.start = time.Now()
 			c.transfers[key] = tran
 			// retransmit
 			return c.tin.channel.Send(address, rm.String())
 		}
-		log.Println("TODO: IGNORING multiple request for", rm.Identification)
+		// log.Println("TODO: IGNORING multiple request for", rm.Identification)
 		/*TODO implement that if version higher cancel old and restart new, additional peers*/
 		return shared.ErrUnsupported
 	}
@@ -109,7 +109,7 @@ func (c *chaninterface) OnAllowFile(address, identification string) (bool, strin
 	}
 	// check timeout
 	if time.Since(tran.start) > transferTimeout {
-		c.log("Transfer timed out!")
+		// c.log("Transfer timed out!")
 		delete(c.transfers, key)
 		return false, ""
 	}
@@ -247,10 +247,10 @@ func (c *chaninterface) OnMessage(address, message string) {
 				return
 			}
 			if msg.Request == shared.ReModel {
-				c.log("Received model message!")
+				// c.log("Received model message!")
 				c.onRequestModelMessage(address, *msg)
 			} else {
-				c.log("Received request message!", msg.Request.String(), msg.Identification)
+				// c.log("Received request message!", msg.Request.String(), msg.Identification)
 				c.onRequestMessage(address, *msg)
 			}
 		default:
@@ -270,7 +270,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage) {
 	// check if we even have to apply it to avoid recursive requesting!
 	if c.tin.model.HasUpdate(&msg) {
-		c.log("Update is known, ignoring!")
+		// c.log("Update is known, ignoring!")
 		return
 	}
 	// if directory we don't want to request anything since we can directly apply it
@@ -414,7 +414,6 @@ func (c *chaninterface) onModelFileReceived(address, path string) {
 	for _, um := range updateLists {
 		c.remoteUpdate(address, *um)
 	}
-	log.Println("ReModel: model file applied!")
 }
 
 /*
