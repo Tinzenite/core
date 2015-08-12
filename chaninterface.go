@@ -236,7 +236,6 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-			c.log("Received update message!", msg.Operation.String(), msg.Object.Path)
 			c.onUpdateMessage(address, *msg)
 		case shared.MsgRequest:
 			// read request message
@@ -250,7 +249,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				// c.log("Received model message!")
 				c.onRequestModelMessage(address, *msg)
 			} else {
-				// c.log("Received request message!", msg.Request.String(), msg.Identification)
+				c.log("Received request message!", msg.Request.String(), msg.Identification)
 				c.onRequestMessage(address, *msg)
 			}
 		default:
@@ -273,6 +272,7 @@ func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage
 		// c.log("Update is known, ignoring!")
 		return
 	}
+	c.log("Received update message!", msg.Operation.String(), msg.Object.Path)
 	// if directory we don't want to request anything since we can directly apply it
 	if msg.Object.Directory {
 		c.applyUpdateWithMerge(msg)
@@ -323,6 +323,14 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 }
 
 func (c *chaninterface) onRequestModelMessage(address string, msg shared.RequestMessage) {
+	// quietly update model
+	c.tin.muteFlag = true
+	defer func() { c.tin.muteFlag = false }()
+	err := c.tin.model.Update()
+	if err != nil {
+		c.log("model update failed:", err.Error())
+		return
+	}
 	// get model
 	objModel, err := c.tin.model.Read()
 	if err != nil {
