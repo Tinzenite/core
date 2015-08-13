@@ -249,7 +249,6 @@ func (c *chaninterface) OnMessage(address, message string) {
 				// c.log("Received model message!")
 				c.onRequestModelMessage(address, *msg)
 			} else {
-				c.log("Received request message!", msg.Request.String(), msg.Identification)
 				c.onRequestMessage(address, *msg)
 			}
 		default:
@@ -292,6 +291,7 @@ func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage
 }
 
 func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessage) {
+	// c.log("Received request message!", msg.Request.String(), msg.Identification)
 	// this means we need to send our selfpeer
 	if msg.Request == shared.RePeer {
 		// so build a bogus update message and send that
