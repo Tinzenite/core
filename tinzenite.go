@@ -232,9 +232,6 @@ func (t *Tinzenite) send(address, msg string) error {
 
 /*
 Merge an update message to the local model.
-
-TODO: with move implemented one of the merged file copies can be kept and simply
-renamed, also solving the ID problem. Look into this!
 */
 func (t *Tinzenite) merge(msg *shared.UpdateMessage) error {
 	relPath := shared.CreatePath(t.Path, msg.Object.Path)
@@ -249,7 +246,7 @@ func (t *Tinzenite) merge(msg *shared.UpdateMessage) error {
 		log.Println("Core:", "Can not check if content is same!")
 	} else {
 		if stin.Content == msg.Object.Content {
-			log.Println("Core:", "Merge not required as updates are in sync!")
+			// log.Println("Core:", "Merge not required as updates are in sync!")
 			// so all we need to do is apply the version update
 			t.model.ApplyModify(relPath, &msg.Object)
 			return nil

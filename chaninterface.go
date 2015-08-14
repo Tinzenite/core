@@ -436,7 +436,7 @@ func (c *chaninterface) sendFile(address, path, identification string, f channel
 	if f == nil {
 		f = func(success bool) {
 			if !success {
-				log.Println("Send failed!")
+				log.Println("Send failed!", path)
 			}
 		}
 	}
