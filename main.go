@@ -73,7 +73,7 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 		return nil, err
 	}
 	// save that this directory is now a tinzenite dir
-	err = tinzenite.storeGlobalConfig()
+	err = shared.WriteDirectoryList(tinzenite.Path)
 	if err != nil {
 		failed = true
 		return nil, err

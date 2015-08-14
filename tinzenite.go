@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/user"
 	"sync"
 
 	"github.com/tinzenite/channel"
@@ -172,7 +171,7 @@ func (t *Tinzenite) PrintStatus() string {
 }
 
 /*
-DisconnectPeer does exactly that. NOTE: this is a passive action and not due
+DisconnectPeer does exactly that. NOTE: this is a passive action and doesn't do
 anything except remove the peer from the network. The peer is not further
 notified.
 
@@ -289,36 +288,6 @@ func (t *Tinzenite) merge(msg *shared.UpdateMessage) error {
 		return err
 	}
 	return nil
-}
-
-/*
-storeGlobalConfig stores the path value into the user's home directory so that clients
-can locate it.
-*/
-func (t *Tinzenite) storeGlobalConfig() error {
-	// ready outside data
-	user, err := user.Current()
-	if err != nil {
-		return err
-	}
-	path := user.HomeDir + "/.config/tinzenite"
-	err = shared.MakeDirectory(path)
-	if err != nil {
-		return err
-	}
-	path += "/" + shared.DIRECTORYLIST
-	file, err := os.OpenFile(path, shared.FILEFLAGCREATEAPPEND, shared.FILEPERMISSIONMODE)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	// write path to file
-	_, err = file.WriteString(t.Path + "\n")
-	if err != nil {
-		return err
-	}
-	// ensure that the file is valid
-	return shared.PrettifyDirectoryList()
 }
 
 /*
