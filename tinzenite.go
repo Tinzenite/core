@@ -86,6 +86,13 @@ func (t *Tinzenite) Address() (string, error) {
 }
 
 /*
+Name of this Tinzenite peer.
+*/
+func (t *Tinzenite) Name() string {
+	return t.selfpeer.Name
+}
+
+/*
 Close cleanly stores everything and shuts Tinzenite down.
 */
 func (t *Tinzenite) Close() {
