@@ -30,11 +30,11 @@ type Tinzenite struct {
 }
 
 /*
-Sync the entire file system model of the directory, first locally and then
-remotely if other peers are connected. NOTE: All Sync{|Local|Remote} methods can
-block for a potentially long time, especially when first run!
+SyncRemote updates first locally and then sync remotely if other peers are
+connected. NOTE: Both sync methods can block for a potentially long time,
+especially when first run!
 */
-func (t *Tinzenite) Sync() error {
+func (t *Tinzenite) SyncRemote() error {
 	// mute updates because we'll sync models later
 	t.muteFlag = true
 	// defer setting it back guaranteed
@@ -44,7 +44,14 @@ func (t *Tinzenite) Sync() error {
 	if err != nil {
 		return err
 	}
-	return t.SyncRemote()
+	online, err := t.channel.OnlineAddresses()
+	if err != nil {
+		return err
+	}
+	for _, address := range online {
+		t.cInterface.SyncModel(address)
+	}
+	return nil
 }
 
 /*
@@ -59,23 +66,6 @@ func (t *Tinzenite) SyncLocal() error {
 	}
 	// update model
 	return t.model.Update()
-}
-
-/*
-SyncRemote changes. Will request the models of connected peers and merge them
-to the local peer.
-
-TODO: fetches model from other peers and syncs (this is for manual sync)
-*/
-func (t *Tinzenite) SyncRemote() error {
-	online, err := t.channel.OnlineAddresses()
-	if err != nil {
-		return err
-	}
-	for _, address := range online {
-		t.cInterface.SyncModel(address)
-	}
-	return nil
 }
 
 /*
