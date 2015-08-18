@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"log"
 	"os"
@@ -21,7 +22,7 @@ type chaninterface struct {
 	tin *Tinzenite
 	// map of transfer objects, referenced by the object id. Both for in and out.
 	inTransfers  map[string]transfer
-	outTransfers map[string]transfer
+	outTransfers map[string]bool
 	// active stores all active file transfers so that we avoid getting multiple files from one peer at once
 	active       map[string]bool
 	recpath      string
@@ -33,7 +34,7 @@ func createChannelInterface(t *Tinzenite) *chaninterface {
 	return &chaninterface{
 		tin:          t,
 		inTransfers:  make(map[string]transfer),
-		outTransfers: make(map[string]transfer),
+		outTransfers: make(map[string]bool),
 		active:       make(map[string]bool),
 		recpath:      t.Path + "/" + shared.TINZENITEDIR + "/" + shared.RECEIVINGDIR,
 		temppath:     t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR,
@@ -432,15 +433,29 @@ identification is what it will be named in transfer, and the function will be
 called once the send was successful.
 */
 func (c *chaninterface) sendFile(address, path, identification string, f channel.OnDone) error {
-	// if no function is given we want to at least be notified if something went wrong, right?
-	if f == nil {
-		f = func(success bool) {
-			if !success {
-				log.Println("Send failed!", path)
-			}
+	// key for keeping track of running transfers
+	key := address + ":" + identification
+	// we must wrap the function, even if none was given because we'll need to remove the outTransfers
+	newFunction := func(success bool) {
+		delete(c.outTransfers, key)
+		// remember to call the callback
+		if f != nil {
+			f(success)
+		} else if !success {
+			// if no function was given still alert that send failed
+			log.Println("Send failed!", path)
 		}
 	}
-	return c.tin.channel.SendFile(address, path, identification, f)
+	// if it already exists, don't restart a new one!
+	_, exists := c.outTransfers[key]
+	if exists {
+		/*TODO maybe cancel old one and restart?*/
+		return errors.New("out transfer already exists, will not resend")
+	}
+	// write that the transfer is happening
+	c.outTransfers[key] = true
+	// now call with overwritten function
+	return c.tin.channel.SendFile(address, path, identification, newFunction)
 }
 
 /*
