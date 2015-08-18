@@ -19,8 +19,9 @@ export them unnecessarily.
 type chaninterface struct {
 	// reference back to Tinzenite
 	tin *Tinzenite
-	// map of transfer objects, referenced by the object id
-	transfers map[string]transfer
+	// map of transfer objects, referenced by the object id. Both for in and out.
+	inTransfers  map[string]transfer
+	outTransfers map[string]transfer
 	// active stores all active file transfers so that we avoid getting multiple files from one peer at once
 	active       map[string]bool
 	recpath      string
@@ -31,7 +32,8 @@ type chaninterface struct {
 func createChannelInterface(t *Tinzenite) *chaninterface {
 	return &chaninterface{
 		tin:          t,
-		transfers:    make(map[string]transfer),
+		inTransfers:  make(map[string]transfer),
+		outTransfers: make(map[string]transfer),
 		active:       make(map[string]bool),
 		recpath:      t.Path + "/" + shared.TINZENITEDIR + "/" + shared.RECEIVINGDIR,
 		temppath:     t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR,
@@ -66,12 +68,12 @@ when the transfer was successful or not. NOTE: only f may be nil.
 func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f onDone) error {
 	// build key
 	key := address + ":" + rm.Identification
-	if tran, exists := c.transfers[key]; exists {
+	if tran, exists := c.inTransfers[key]; exists {
 		if time.Since(tran.start) > transferTimeout {
 			// c.log("Retransmiting transfer.")
 			// update
 			tran.start = time.Now()
-			c.transfers[key] = tran
+			c.inTransfers[key] = tran
 			// retransmit
 			return c.tin.channel.Send(address, rm.String())
 		}
@@ -84,7 +86,7 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 		start: time.Now(),
 		peers: []string{address},
 		done:  f}
-	c.transfers[key] = tran
+	c.inTransfers[key] = tran
 	/*TODO send request to only one underutilized peer at once*/
 	// FOR NOW: just get it from whomever send the update
 	return c.tin.channel.Send(address, rm.String())
@@ -98,7 +100,7 @@ not. Checks the address and identification of the object against c.transfers.
 */
 func (c *chaninterface) OnAllowFile(address, identification string) (bool, string) {
 	key := address + ":" + identification
-	tran, exists := c.transfers[key]
+	tran, exists := c.inTransfers[key]
 	if !exists {
 		c.log("Transfer not authorized for", identification, "!")
 		return false, ""
@@ -110,7 +112,7 @@ func (c *chaninterface) OnAllowFile(address, identification string) (bool, strin
 	// check timeout
 	if time.Since(tran.start) > transferTimeout {
 		// c.log("Transfer timed out!")
-		delete(c.transfers, key)
+		delete(c.inTransfers, key)
 		return false, ""
 	}
 	// here accept transfer
@@ -139,11 +141,11 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 	/*TODO check request if file is delta / must be decrypted before applying to model*/
 	// get tran with key
 	key := address + ":" + identification
-	tran, exists := c.transfers[key]
+	tran, exists := c.inTransfers[key]
 	if !exists {
 		c.log("Transfer doesn't even exist anymore! Something bad went wrong...")
 		// remove from transfers
-		delete(c.transfers, identification)
+		delete(c.inTransfers, identification)
 		// remove any broken remaining temp files
 		err := os.Remove(c.recpath + "/" + filename)
 		if err != nil {
@@ -152,7 +154,7 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 		return
 	}
 	// remove transfer
-	delete(c.transfers, key)
+	delete(c.inTransfers, key)
 	// move from receiving to temp
 	err := os.Rename(c.recpath+"/"+filename, c.temppath+"/"+filename)
 	if err != nil {
@@ -425,11 +427,9 @@ func (c *chaninterface) onModelFileReceived(address, path string) {
 }
 
 /*
-sendFile ensures that only a limited number of transfers are running at the same
-time.
-
-TODO implement. Write to buffered channel? Channel reads from it? Or via queue?
-Actually it seems like Tox does that by itself: https://github.com/irungentoo/toxcore/issues/1382
+sendFile sends the given file to the address. Path is where the file lies,
+identification is what it will be named in transfer, and the function will be
+called once the send was successful.
 */
 func (c *chaninterface) sendFile(address, path, identification string, f channel.OnDone) error {
 	// if no function is given we want to at least be notified if something went wrong, right?
