@@ -443,7 +443,7 @@ func (c *chaninterface) sendFile(address, path, identification string, f channel
 			f(success)
 		} else if !success {
 			// if no function was given still alert that send failed
-			log.Println("Send failed!", path)
+			log.Println("Transfer was not closed!", path)
 		}
 	}
 	// if it already exists, don't restart a new one!
