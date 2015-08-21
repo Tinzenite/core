@@ -314,6 +314,7 @@ func (t *Tinzenite) background() {
 			if t.muteFlag {
 				continue
 			}
+			log.Printf("Tin sending %s: %s at %s\n", msg.Operation, msg.Object.Name, msg.Object.Version)
 			online, err := t.channel.OnlineAddresses()
 			if err != nil {
 				log.Println("Background:", err)
