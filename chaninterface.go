@@ -430,9 +430,9 @@ func (c *chaninterface) onModelFileReceived(address, path string) {
 	for _, um := range updateLists {
 		if um.Object.Directory {
 			// directly apply directory
-			err := c.tin.model.ApplyUpdateMessage(um)
+			err := c.applyUpdateWithMerge(*um)
 			if err != nil {
-				c.warn("directory message returned:", err.Error())
+				c.warn("applyUpdateWithMerge on directory error:", err.Error())
 			}
 		} else {
 			// fetch and then apply file
