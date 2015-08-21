@@ -373,6 +373,11 @@ remoteUpdate is a conveniance wrapper that fetches a file from the address for
 the given update and then applies it.
 */
 func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
+	// sanity check
+	if msg.Object.Directory {
+		c.warn("remoteUpdate called with directory, ignoring!")
+		return
+	}
 	// create & modify must first fetch file
 	rm := shared.CreateRequestMessage(shared.ReObject, msg.Object.Identification)
 	// request file and apply update on success
@@ -423,7 +428,16 @@ func (c *chaninterface) onModelFileReceived(address, path string) {
 	}
 	// pretend that the updatemessage came from outside here
 	for _, um := range updateLists {
-		c.remoteUpdate(address, *um)
+		if um.Object.Directory {
+			// directly apply directory
+			err := c.tin.model.ApplyUpdateMessage(um)
+			if err != nil {
+				c.warn("directory message returned:", err.Error())
+			}
+		} else {
+			// fetch and then apply file
+			c.remoteUpdate(address, *um)
+		}
 	}
 }
 
