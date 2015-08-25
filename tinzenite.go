@@ -314,12 +314,12 @@ func (t *Tinzenite) background() {
 			if t.muteFlag {
 				continue
 			}
-			log.Printf("Tin sending %s: %s at %s\n", msg.Operation, msg.Object.Name, msg.Object.Version)
 			online, err := t.channel.OnlineAddresses()
 			if err != nil {
 				log.Println("Background:", err)
 			}
 			for _, address := range online {
+				log.Printf("Tin: sending <%s> of <.../%s> to %s.\n", msg.Operation, msg.Object.Name, address[:8])
 				t.channel.Send(address, msg.String())
 			}
 		} // select
