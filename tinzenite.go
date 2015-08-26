@@ -324,7 +324,12 @@ func (t *Tinzenite) background() {
 				log.Println("Background:", err)
 			}
 			for _, address := range online {
-				log.Printf("Tin: sending <%s> of <.../%s> to %s.\n", msg.Operation, msg.Object.Name, address[:8])
+				name := msg.Object.Name
+				// for better visibility add special mark to signify directory
+				if msg.Object.Directory {
+					name += "/+"
+				}
+				log.Printf("Tin: sending <%s> of <.../%s> to %s.\n", msg.Operation, name, address[:8])
 				t.channel.Send(address, msg.String())
 			}
 		} // select
