@@ -240,49 +240,54 @@ func (t *Tinzenite) merge(msg *shared.UpdateMessage) error {
 	// check if content is same, no need for merge then (except for version)
 	stin, err := t.model.GetInfo(relPath)
 	if err != nil {
-		log.Println("Core:", "Can not check if content is same!")
+		log.Println("Merge: can not check if content is same!")
 	} else {
 		if stin.Content == msg.Object.Content {
 			// log.Println("Core:", "Merge not required as updates are in sync!")
 			// so all we need to do is apply the version update
-			t.model.ApplyModify(relPath, &msg.Object)
-			return nil
+			return t.model.ApplyModify(relPath, &msg.Object)
 		}
 	}
 	// second: move to new name
 	err = os.Rename(relPath.FullPath(), relPath.FullPath()+LOCAL)
 	if err != nil {
-		log.Println("Original can not be found!")
+		log.Println("Merge: original can not be found!")
 		return err
 	}
-	err = t.model.PartialUpdate(relPath.FullPath() + LOCAL)
+	// third: apply create of local version
+	localVersionPath := relPath.RenameLastElement(relPath.LastElement() + LOCAL)
+	err = t.model.ApplyCreate(localVersionPath, nil)
 	if err != nil {
+		log.Println("Merge: creating local merge file failed!")
 		return err
 	}
-	// third: remove original
+	// fourth: remove original
 	err = t.model.ApplyRemove(relPath, nil)
 	if err != nil {
+		log.Println("Merge: removing original failed!")
 		return err
 	}
-	// fourth: change path and apply remote as create
+	// fifth: change path and apply remote as create
 	msg.Operation = shared.OpCreate
 	msg.Object.Path = relPath.SubPath() + REMOTE
 	msg.Object.Name = relPath.LastElement() + REMOTE
 	oldID := msg.Object.Identification
 	msg.Object.Identification, err = shared.NewIdentifier()
 	if err != nil {
+		log.Println("Merge: failed to create new identifier!")
 		return err
 	}
 	// new id --> rename temp file
 	tempPath := t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR
 	err = os.Rename(tempPath+"/"+oldID, tempPath+"/"+msg.Object.Identification)
 	if err != nil {
-		log.Println("Updating remote object file failed!")
+		log.Println("Merge: ipdating remote object file failed!")
 		return err
 	}
-	// fifth: create remote file
+	// sixth: create remote file
 	err = t.model.ApplyCreate(relPath.Apply(relPath.FullPath()+REMOTE), &msg.Object)
 	if err != nil {
+		log.Println("Merge: creating remote merge file failed!")
 		return err
 	}
 	return nil
