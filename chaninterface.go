@@ -274,10 +274,11 @@ func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage
 		// c.log("Update is known, ignoring!")
 		return
 	}
-	c.log("Received update message!", msg.Operation.String(), msg.Object.Path)
 	// if directory we don't want to request anything since we can directly apply it
 	if msg.Object.Directory {
-		c.applyUpdateWithMerge(msg)
+		// use merge even though should never cause merge
+		_ = c.applyUpdateWithMerge(msg)
+		// we ignore the error because we can't do anything about it here anyway
 		return
 	}
 	// HERE only files
@@ -294,9 +295,10 @@ func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage
 }
 
 func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessage) {
-	// c.log("Received request message!", msg.Request.String(), msg.Identification)
-	// this means we need to send our selfpeer
+	// this means we need to send our selfpeer (used for bootstrapping)
 	if msg.Request == shared.RePeer {
+		// TODO check if this is really still in use?
+		log.Println("DEBUG: YES, this is still in use. Why? Bootstrap should have fixed this...")
 		// so build a bogus update message and send that
 		peerPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR + "/" + c.tin.selfpeer.Identification + shared.ENDING
 		fullPath := shared.CreatePath(c.tin.model.Root, peerPath)
@@ -315,13 +317,16 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 		c.log("Failed to locate object for", msg.Identification)
 		return
 	}
+	// make sure we don't try to send a directory
 	if obj.Directory {
+		// theoretically shouldn't happen, but better safe than sorry
 		c.warn("request is for directory, ignoring!")
 		return
 	}
+	// so send file
 	err = c.sendFile(address, c.tin.model.Root+"/"+obj.Path, msg.Identification, nil)
 	if err != nil {
-		c.log(err.Error())
+		c.log("failed to send file:", err.Error())
 	}
 }
 
