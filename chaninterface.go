@@ -219,7 +219,7 @@ func (c *chaninterface) OnNewConnection(address, message string) {
 OnConnected is called whenever a peer comes online. Starts authentication process.
 */
 func (c *chaninterface) OnConnected(address string) {
-	c.log(address, "came online!")
+	c.log(address[:8], "came online!")
 	/*TODO implement authentication! Also in Bootstrap...*/
 }
 
