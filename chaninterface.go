@@ -379,6 +379,11 @@ the given update and then applies it.
 */
 func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
 	// sanity check
+	if msg.Operation == shared.OpRemove {
+		c.warn("remoteUpdate called with remove, ignoring!")
+		return
+	}
+	// sanity check
 	if msg.Object.Directory {
 		c.warn("remoteUpdate called with directory, ignoring!")
 		return
@@ -396,6 +401,8 @@ func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
 		// apply
 		err = c.applyUpdateWithMerge(msg)
 		if err != nil {
+			// TODO FIXME why does this regularly happen for files where it shouldn't?
+			log.Println("DEBUG: FAE:", msg.Object.String())
 			c.log("File application error: " + err.Error())
 		}
 		// done
