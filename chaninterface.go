@@ -277,8 +277,10 @@ func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage
 	// if directory we don't want to request anything since we can directly apply it
 	if msg.Object.Directory {
 		// use merge even though should never cause merge
-		_ = c.applyUpdateWithMerge(msg)
-		// we ignore the error because we can't do anything about it here anyway
+		err := c.applyUpdateWithMerge(msg)
+		if err != nil {
+			c.warn("applyUpdateWithMerge:", err.Error())
+		}
 		return
 	}
 	// HERE only files
@@ -288,7 +290,10 @@ func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage
 		c.remoteUpdate(address, msg)
 	} else if op == shared.OpRemove {
 		// remove is without file transfer, so directly apply
-		c.applyUpdateWithMerge(msg)
+		err := c.applyUpdateWithMerge(msg)
+		if err != nil {
+			c.warn("applyUpdateWithMerge:", err.Error())
+		}
 	} else {
 		c.warn("Unknown operation received, ignoring update message!")
 	}
@@ -402,7 +407,7 @@ func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
 		err = c.applyUpdateWithMerge(msg)
 		if err != nil {
 			// TODO FIXME why does this regularly happen for files where it shouldn't?
-			log.Println("DEBUG: FAE:", msg.Object.String())
+			log.Println("DEBUG: FAE:", msg.String())
 			c.log("File application error: " + err.Error())
 		}
 		// done
