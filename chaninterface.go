@@ -383,8 +383,6 @@ func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
 		// apply
 		err = c.mergeUpdate(msg)
 		if err != nil {
-			// TODO FIXME why does this regularly happen for files where it shouldn't?
-			log.Println("DEBUG: FAE:", msg.String())
 			c.log("File application error: " + err.Error())
 		}
 		// done
