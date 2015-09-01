@@ -275,7 +275,10 @@ func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage
 		return
 	}
 	// handle message
-	c.handleMessage(address, msg)
+	err := c.handleMessage(address, msg)
+	if err != nil {
+		c.log("handleMessage failed with:", err.Error())
+	}
 }
 
 func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessage) {
