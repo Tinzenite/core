@@ -274,29 +274,8 @@ func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage
 		// c.log("Update is known, ignoring!")
 		return
 	}
-	// if directory we don't want to request anything since we can directly apply it
-	if msg.Object.Directory {
-		// use merge even though should never cause merge
-		err := c.applyUpdateWithMerge(msg)
-		if err != nil {
-			c.warn("applyUpdateWithMerge:", err.Error())
-		}
-		return
-	}
-	// HERE only files
-	// apply / fetch and apply
-	if op := msg.Operation; op == shared.OpCreate || op == shared.OpModify {
-		// fetch and apply file
-		c.remoteUpdate(address, msg)
-	} else if op == shared.OpRemove {
-		// remove is without file transfer, so directly apply
-		err := c.applyUpdateWithMerge(msg)
-		if err != nil {
-			c.warn("applyUpdateWithMerge:", err.Error())
-		}
-	} else {
-		c.warn("Unknown operation received, ignoring update message!")
-	}
+	// handle message
+	c.handleMessage(address, msg)
 }
 
 func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessage) {
@@ -384,13 +363,8 @@ the given update and then applies it.
 */
 func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
 	// sanity check
-	if msg.Operation == shared.OpRemove {
-		c.warn("remoteUpdate called with remove, ignoring!")
-		return
-	}
-	// sanity check
-	if msg.Object.Directory {
-		c.warn("remoteUpdate called with directory, ignoring!")
+	if msg.Operation == shared.OpRemove || msg.Object.Directory {
+		c.warn("remoteUpdate called with remove or with directory, ignoring!")
 		return
 	}
 	// create & modify must first fetch file
@@ -404,7 +378,7 @@ func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
 			return
 		}
 		// apply
-		err = c.applyUpdateWithMerge(msg)
+		err = c.mergeUpdate(msg)
 		if err != nil {
 			// TODO FIXME why does this regularly happen for files where it shouldn't?
 			log.Println("DEBUG: FAE:", msg.String())
@@ -438,22 +412,16 @@ func (c *chaninterface) onModelFileReceived(address, path string) {
 		return
 	}
 	// get difference in updates
-	updateLists, err := c.tin.model.SyncModel(foreignModel)
+	updateLists, err := c.tin.model.Sync(foreignModel)
 	if err != nil {
 		log.Println("ReModel:", err)
 		return
 	}
 	// pretend that the updatemessage came from outside here
 	for _, um := range updateLists {
-		if um.Object.Directory {
-			// directly apply directory
-			err := c.applyUpdateWithMerge(*um)
-			if err != nil {
-				c.warn("applyUpdateWithMerge on directory error:", err.Error())
-			}
-		} else {
-			// fetch and then apply file
-			c.remoteUpdate(address, *um)
+		err := c.handleMessage(address, *um)
+		if err != nil {
+			c.log("handleMessage failed with:", err.Error())
 		}
 	}
 }
@@ -490,18 +458,42 @@ func (c *chaninterface) sendFile(address, path, identification string, f channel
 }
 
 /*
-applyUpdateWithMerge does exactly that. First it tries to apply the update. If it
-fails with a merge a merge is done.
+handleMessage looks at the message, fetches files if requried, and correctly
+applies it to the model.
 */
-func (c *chaninterface) applyUpdateWithMerge(msg shared.UpdateMessage) error {
-	err := c.tin.model.ApplyUpdateMessage(&msg)
-	if err == shared.ErrConflict {
-		err := c.tin.merge(&msg)
-		if err != nil {
-			return err
-		}
+func (c *chaninterface) handleMessage(address string, msg shared.UpdateMessage) error {
+	// apply directories directly
+	if msg.Object.Directory {
+		// no merge because it should never happen for directories
+		return c.tin.model.ApplyUpdateMessage(&msg)
 	}
-	return nil
+	op := msg.Operation
+	// create and modify must first fetch the file
+	if op == shared.OpCreate || op == shared.OpModify {
+		c.remoteUpdate(address, msg)
+		// errors may turn up but only when the file has been received, so done here
+		return nil
+	} else if op == shared.OpRemove {
+		// remove is without file transfer, so directly apply
+		return c.mergeUpdate(msg)
+	}
+	c.warn("Unknown operation received, ignoring update message!")
+	return shared.ErrIllegalParameters
+}
+
+/*
+mergeUpdate does exactly that. First it tries to apply the update. If it fails
+with a merge a merge is done.
+*/
+func (c *chaninterface) mergeUpdate(msg shared.UpdateMessage) error {
+	// try to apply it straight
+	err := c.tin.model.ApplyUpdateMessage(&msg)
+	// if no error or not merge error, return err
+	if err != shared.ErrConflict {
+		return err
+	}
+	// if merge error --> merge
+	return c.tin.merge(&msg)
 }
 
 /*
