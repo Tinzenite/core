@@ -259,8 +259,17 @@ func (c *chaninterface) OnMessage(address, message string) {
 			} else {
 				c.onRequestMessage(address, *msg)
 			}
+		case shared.MsgNotify:
+			msg := &shared.NotifyMessage{}
+			err := json.Unmarshal([]byte(message), msg)
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
+			log.Println("DEBUG: received notify message, now do something with it!")
+			// TODO NOTE FIXME
 		default:
-			log.Printf("Unknown object sent: %s!\n", msgType)
+			c.warn("Unknown object sent: " + msgType.String() + "!")
 		}
 		// If it was JSON, we're done if we can't do anything with it
 		return
@@ -268,6 +277,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 	// if unmarshal didn't work check for plain commands:
 	switch message {
 	default:
+		// NOTE: Currently none implemented
 		c.log("Received", message)
 		c.tin.channel.Send(address, "ACK")
 	}
@@ -461,17 +471,16 @@ func (c *chaninterface) handleMessage(address string, msg shared.UpdateMessage) 
 	if err == model.ErrUpdateKnown {
 		return nil
 	}
-	// if object has been locally removed --> renotify other side of removal
-	if err == model.ErrObjectRemoved {
-		// resend removal so that other peer is notified
-		// TODO update version?
-		rm := shared.CreateUpdateMessage(shared.OpRemove, msg.Object)
-		c.tin.channel.Send(address, rm.JSON())
+	// if other side hasn't completed removal --> notify that we're done with it
+	if err == model.ErrObjectRemovalDone {
+		nm := shared.CreateNotifyMessage(shared.OpRemove, msg.Object.Name)
+		c.tin.channel.Send(address, nm.JSON())
 		// done
 		return nil
 	}
 	// if still error, return it
 	if err != nil {
+		// TODO FIXME some errors shouldn't happen / be muted.
 		return err
 	}
 	// IF CheckMessage was ok, we can now handle applying the message
