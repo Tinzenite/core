@@ -77,7 +77,7 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 			tran.start = time.Now()
 			c.inTransfers[key] = tran
 			// retransmit
-			return c.tin.channel.Send(address, rm.String())
+			return c.tin.channel.Send(address, rm.JSON())
 		}
 		// log.Println("TODO: IGNORING multiple request for", rm.Identification)
 		/*TODO implement that if version higher cancel old and restart new, additional peers*/
@@ -91,7 +91,7 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 	c.inTransfers[key] = tran
 	/*TODO send request to only one underutilized peer at once*/
 	// FOR NOW: just get it from whomever send the update
-	return c.tin.channel.Send(address, rm.String())
+	return c.tin.channel.Send(address, rm.JSON())
 }
 
 // -------------------------CALLBACKS-------------------------------------------
@@ -287,7 +287,7 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 			return
 		}
 		um := shared.CreateUpdateMessage(shared.OpCreate, *obj)
-		c.tin.channel.Send(address, um.String())
+		c.tin.channel.Send(address, um.JSON())
 		return
 	}
 	// get obj for path and directory
@@ -463,8 +463,11 @@ func (c *chaninterface) handleMessage(address string, msg shared.UpdateMessage) 
 	}
 	// if object has been locally removed --> renotify other side of removal
 	if err == model.ErrObjectRemoved {
-		// TODO resend removal so that other peer is notified
-		log.Println("DEBUG: resend remove message for object!")
+		// resend removal so that other peer is notified
+		// TODO update version?
+		rm := shared.CreateUpdateMessage(shared.OpRemove, msg.Object)
+		c.tin.channel.Send(address, rm.JSON())
+		// done
 		return nil
 	}
 	// if still error, return it

@@ -331,7 +331,7 @@ func (t *Tinzenite) background() {
 					name += "/+"
 				}
 				log.Printf("Tin: sending <%s> of <.../%s> to %s.\n", msg.Operation, name, address[:8])
-				t.channel.Send(address, msg.String())
+				t.channel.Send(address, msg.JSON())
 			}
 		} // select
 	} // for
