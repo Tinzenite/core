@@ -266,8 +266,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-			log.Println("DEBUG: received notify message, now do something with it!")
-			// TODO NOTE FIXME
+			c.onNotifyMessage(address, *msg)
 		default:
 			c.warn("Unknown object sent: " + msgType.String() + "!")
 		}
@@ -360,6 +359,29 @@ func (c *chaninterface) onRequestModelMessage(address string, msg shared.Request
 		c.log("SendFile:", err.Error())
 		return
 	}
+}
+
+func (c *chaninterface) onNotifyMessage(address string, nm shared.NotifyMessage) {
+	// for now we're only interested in remove notifications
+	if nm.Operation != shared.OpRemove {
+		c.warn("Notify for non-Remove operations not yet supported, ignoring!")
+		return
+	}
+	// get peer id of sender
+	var peerID string
+	for _, peer := range c.tin.allPeers {
+		if peer.Address == address {
+			peerID = peer.Identification
+			break
+		}
+	}
+	// if still empty we couldn't find it
+	if peerID == "" {
+		c.warn("Notify could not be applied: peer not found!")
+		return
+	}
+	// receiving this means that the other peer already has removed the REMOVEDIR, so add peer ourselves
+	c.tin.model.UpdateRemovalDir(nm.Identification, peerID)
 }
 
 /*
