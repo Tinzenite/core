@@ -361,10 +361,19 @@ func (c *chaninterface) onRequestModelMessage(address string, msg shared.Request
 	}
 }
 
+/*
+onNotifyMessage is called when a NotifyMessage is received.
+*/
 func (c *chaninterface) onNotifyMessage(address string, nm shared.NotifyMessage) {
 	// for now we're only interested in remove notifications
 	if nm.Operation != shared.OpRemove {
 		c.warn("Notify for non-Remove operations not yet supported, ignoring!")
+		return
+	}
+	// check if removal even exists
+	path := c.tin.model.Root + "/" + shared.TINZENITEDIR + "/" + shared.REMOVEDIR + "/" + nm.Identification
+	if !shared.FileExists(path) {
+		c.warn("Notify received for non existant removal, ignoring!")
 		return
 	}
 	// get peer id of sender
