@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/tinzenite/channel"
+	"github.com/tinzenite/model"
 	"github.com/tinzenite/shared"
 )
 
@@ -239,7 +240,11 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-			c.onUpdateMessage(address, *msg)
+			// handle the message and show log if error
+			err = c.handleMessage(address, *msg)
+			if err != nil {
+				c.log("handleMessage failed with:", err.Error())
+			}
 		case shared.MsgRequest:
 			// read request message
 			msg := &shared.RequestMessage{}
@@ -265,19 +270,6 @@ func (c *chaninterface) OnMessage(address, message string) {
 	default:
 		c.log("Received", message)
 		c.tin.channel.Send(address, "ACK")
-	}
-}
-
-func (c *chaninterface) onUpdateMessage(address string, msg shared.UpdateMessage) {
-	// check if we even have to apply it to avoid recursive requesting!
-	if c.tin.model.HasUpdate(&msg) {
-		// c.log("Update is known, ignoring!")
-		return
-	}
-	// handle message
-	err := c.handleMessage(address, msg)
-	if err != nil {
-		c.log("handleMessage failed with:", err.Error())
 	}
 }
 
@@ -463,6 +455,23 @@ handleMessage looks at the message, fetches files if requried, and correctly
 applies it to the model.
 */
 func (c *chaninterface) handleMessage(address string, msg shared.UpdateMessage) error {
+	// use check message to see if we can apply it or do something special
+	err := c.tin.model.CheckMessage(&msg)
+	// if update known --> ignore it
+	if err == model.ErrUpdateKnown {
+		return nil
+	}
+	// if object has been locally removed --> renotify other side of removal
+	if err == model.ErrObjectRemoved {
+		// TODO resend removal so that other peer is notified
+		log.Println("DEBUG: resend remove message for object!")
+		return nil
+	}
+	// if still error, return it
+	if err != nil {
+		return err
+	}
+	// IF CheckMessage was ok, we can now handle applying the message
 	// apply directories directly
 	if msg.Object.Directory {
 		// no merge because it should never happen for directories
