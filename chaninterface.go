@@ -511,7 +511,6 @@ func (c *chaninterface) handleMessage(address string, msg shared.UpdateMessage) 
 	}
 	// if still error, return it
 	if err != nil {
-		// TODO FIXME some errors shouldn't happen / be muted.
 		return err
 	}
 	// IF CheckMessage was ok, we can now handle applying the message
