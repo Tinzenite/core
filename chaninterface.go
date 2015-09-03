@@ -499,7 +499,7 @@ func (c *chaninterface) handleMessage(address string, msg shared.UpdateMessage) 
 	// use check message to see if we can apply it or do something special
 	err := c.tin.model.CheckMessage(&msg)
 	// if update known --> ignore it
-	if err == model.ErrUpdateKnown {
+	if err == model.ErrIgnoreUpdate {
 		return nil
 	}
 	// if other side hasn't completed removal --> notify that we're done with it
