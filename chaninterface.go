@@ -513,7 +513,14 @@ func (c *chaninterface) handleMessage(address string, msg shared.UpdateMessage) 
 	if err != nil {
 		return err
 	}
-	// IF CheckMessage was ok, we can now handle applying the message
+	// --> IF CheckMessage was ok, we can now handle applying the message
+	// if we receive a modify for a file that doesn't yet exist, modify it to create
+	if !c.tin.model.IsTracked(msg.Object.Path) {
+		// this works because if it was removed we'd already have handled it
+		// TODO remove this once we know it works
+		log.Println("DEBUG: received modify for unknown file, changing to create!")
+		msg.Operation = shared.OpCreate
+	}
 	// apply directories directly
 	if msg.Object.Directory {
 		// no merge because it should never happen for directories
