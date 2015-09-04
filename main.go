@@ -125,6 +125,6 @@ func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
 	t.channel = channel
 	t.initialize()
 	// empty temp folder to remove orphaned files (ignore error because we don't care if it works)
-	err = shared.RemoveDirContents(t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR)
+	_ = shared.RemoveDirContents(t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR)
 	return t, nil
 }
