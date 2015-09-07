@@ -153,7 +153,7 @@ func (t *Tinzenite) PrintStatus() string {
 	} else {
 		var count int
 		for _, address := range addresses {
-			online, err := t.channel.IsOnline(address)
+			online, err := t.channel.IsAddressOnline(address)
 			var insert string
 			if err != nil {
 				insert = "ERROR"
