@@ -309,6 +309,7 @@ func (t *Tinzenite) initialize() {
 background function that handles all async stuff that needs to be done.
 */
 func (t *Tinzenite) background() {
+	defer func() { log.Println("Tinzenite: Background process stopped.") }()
 	for {
 		select {
 		case <-t.stop:
@@ -327,7 +328,7 @@ func (t *Tinzenite) background() {
 				name := msg.Object.Name
 				// for better visibility add special mark to signify directory
 				if msg.Object.Directory {
-					name += "/+"
+					name += "/++"
 				}
 				log.Printf("Tin: sending <%s> of <.../%s> to %s.\n", msg.Operation, name, address[:8])
 				t.channel.Send(address, msg.JSON())
