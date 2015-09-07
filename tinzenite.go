@@ -38,8 +38,7 @@ func (t *Tinzenite) SyncRemote() error {
 	// mute updates because we'll sync models later
 	t.muteFlag = true
 	// defer setting it back guaranteed
-	// TODO temporarily we keep notify muted to test model.sync all by itself FIXME NOTE remove this
-	// defer func() { t.muteFlag = false }()
+	defer func() { t.muteFlag = false }()
 	// first ensure that local model is up to date
 	err := t.SyncLocal()
 	if err != nil {
