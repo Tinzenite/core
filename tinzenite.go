@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"sync"
@@ -193,6 +194,18 @@ func (t *Tinzenite) DisconnectPeer(peerName string) {
 			err = t.channel.RemoveConnection(peer.Address)
 			if err != nil {
 				log.Println("DisconnectPeer:", err)
+			}
+			// write peer to all removals so that no removals will be orphaned
+			removePath := t.Path + "/" + shared.TINZENITEDIR + "/" + shared.REMOVEDIR
+			allRemovals, _ := ioutil.ReadDir(removePath)
+			// for every object that is currently being removed
+			for _, stat := range allRemovals {
+				// write the to be removed peer as done
+				err := t.model.UpdateRemovalDir(stat.Name(), peer.Identification)
+				if err != nil {
+					// warn if it failed
+					log.Println("Tinzenite: failed to purge removed peer from removal!")
+				}
 			}
 			// continue does not readd to tinzenite, removing the reference to it
 			continue
