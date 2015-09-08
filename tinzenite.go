@@ -174,7 +174,6 @@ anything except remove the peer from the network. The peer is not further
 notified.
 
 TODO: maybe not use name but Identification?
-TODO: must write peer to all ongoing removals to ensure that they aren't orphaned!
 */
 func (t *Tinzenite) DisconnectPeer(peerName string) {
 	var newPeers []*shared.Peer
