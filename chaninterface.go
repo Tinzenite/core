@@ -443,7 +443,6 @@ func (c *chaninterface) onModelFileReceived(address, path string) {
 	err = json.Unmarshal(data, foreignModel)
 	if err != nil {
 		log.Println("ReModel failed to parse JSON:", err)
-		log.Println("DEBUG:\n", string(data))
 		return
 	}
 	// get difference in updates
