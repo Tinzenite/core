@@ -430,25 +430,26 @@ func (c *chaninterface) onModelFileReceived(address, path string) {
 	// read model file and remove it
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
-		c.log("ReModel:", err.Error())
+		c.log("ReModel failed to read model from disk:", err.Error())
 		return
 	}
 	err = os.Remove(path)
 	if err != nil {
-		log.Println("ReModel:", err)
+		log.Println("ReModel could not remove model file:", err)
 		// not strictly critical so no return here
 	}
 	// unmarshal
 	foreignModel := &shared.ObjectInfo{}
 	err = json.Unmarshal(data, foreignModel)
 	if err != nil {
-		log.Println("ReModel:", err)
+		log.Println("ReModel failed to parse JSON:", err)
+		log.Println("DEBUG:\n", string(data))
 		return
 	}
 	// get difference in updates
 	updateLists, err := c.tin.model.Sync(foreignModel)
 	if err != nil {
-		log.Println("ReModel:", err)
+		log.Println("ReModel could not sync models:", err)
 		return
 	}
 	// pretend that the updatemessage came from outside here
