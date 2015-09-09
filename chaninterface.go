@@ -510,6 +510,7 @@ func (c *chaninterface) handleMessage(address string, msg shared.UpdateMessage) 
 	}
 	// if still error, return it
 	if err != nil {
+		// TODO: see commented out code below, need to catch something here
 		return err
 	}
 	// --> IF CheckMessage was ok, we can now handle applying the message
