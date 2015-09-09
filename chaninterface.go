@@ -515,7 +515,7 @@ func (c *chaninterface) handleMessage(address string, msg shared.UpdateMessage) 
 	}
 	// --> IF CheckMessage was ok, we can now handle applying the message
 	// if we receive a modify for a file that doesn't yet exist, modify it to create
-	if !c.tin.model.IsTracked(msg.Object.Path) {
+	if !c.tin.model.IsTracked(msg.Object.Path) && msg.Operation == shared.OpModify {
 		// this works because if it was removed we'd already have handled it
 		// TODO remove this once we know it works
 		log.Println("DEBUG: received modify for unknown file, changing to create!")
