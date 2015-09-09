@@ -43,8 +43,8 @@ func createChannelInterface(t *Tinzenite) *chaninterface {
 }
 
 type transfer struct {
-	// start time of transfer for timeout reasons
-	start time.Time
+	// last time this transfer was updated for timeout reasons
+	updated time.Time
 	// peers stores the addresses of all known peers that have the file update
 	peers []string
 	// function to execute once the file has been received
@@ -71,10 +71,10 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 	// build key
 	key := address + ":" + rm.Identification
 	if tran, exists := c.inTransfers[key]; exists {
-		if time.Since(tran.start) > transferTimeout {
-			// c.log("Retransmiting transfer.")
+		if time.Since(tran.updated) > transferTimeout {
+			c.log("Retransmiting transfer due to timeout.")
 			// update
-			tran.start = time.Now()
+			tran.updated = time.Now()
 			c.inTransfers[key] = tran
 			// retransmit
 			return c.tin.channel.Send(address, rm.JSON())
@@ -85,9 +85,9 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 	}
 	// create new transfer
 	tran := transfer{
-		start: time.Now(),
-		peers: []string{address},
-		done:  f}
+		updated: time.Now(),
+		peers:   []string{address},
+		done:    f}
 	c.inTransfers[key] = tran
 	/*TODO send request to only one underutilized peer at once*/
 	// FOR NOW: just get it from whomever send the update
@@ -112,7 +112,7 @@ func (c *chaninterface) OnAllowFile(address, identification string) (bool, strin
 		return false, ""
 	}
 	// check timeout
-	if time.Since(tran.start) > transferTimeout {
+	if time.Since(tran.updated) > transferTimeout {
 		// c.log("Transfer timed out!")
 		delete(c.inTransfers, key)
 		return false, ""

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/tinzenite/channel"
 	"github.com/tinzenite/model"
@@ -174,6 +175,7 @@ anything except remove the peer from the network. The peer is not further
 notified.
 
 TODO: maybe not use name but Identification?
+TODO: when will other peers remove it? They need to remove the contact info from the channel... FIXME
 */
 func (t *Tinzenite) DisconnectPeer(peerName string) {
 	var newPeers []*shared.Peer
@@ -322,11 +324,28 @@ background function that handles all async stuff that needs to be done.
 */
 func (t *Tinzenite) background() {
 	defer func() { log.Println("Tinzenite: Background process stopped.") }()
+	// timer for long transfer feedback
+	transferTicker := time.Tick(5 * time.Second)
 	for {
 		select {
 		case <-t.stop:
 			t.wg.Done()
 			return
+		case <-transferTicker:
+			currentTransfers := t.channel.ActiveTransfers()
+			// if currently none, done
+			if len(currentTransfers) == 0 {
+				continue
+			}
+			// find active transfer
+			var currentProgress int
+			for _, progress := range currentTransfers {
+				if progress != 0 {
+					currentProgress = progress
+					break
+				}
+			}
+			log.Printf("Tin: Pending %d transfers, current one at %d%%.\n", len(currentTransfers), currentProgress)
 		case msg := <-t.sendChannel:
 			// if muted don't send updates
 			if t.muteFlag {
