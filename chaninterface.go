@@ -69,7 +69,7 @@ when the transfer was successful or not. NOTE: only f may be nil.
 */
 func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f onDone) error {
 	// build key
-	key := address + ":" + rm.Identification
+	key := c.buildKey(address, rm.Identification)
 	if tran, exists := c.inTransfers[key]; exists {
 		if time.Since(tran.updated) > transferTimeout {
 			c.log("Retransmiting transfer due to timeout.")
@@ -101,7 +101,7 @@ OnAllowFile is the callback that checks whether the transfer is to be accepted o
 not. Checks the address and identification of the object against c.transfers.
 */
 func (c *chaninterface) OnAllowFile(address, identification string) (bool, string) {
-	key := address + ":" + identification
+	key := c.buildKey(address, identification)
 	tran, exists := c.inTransfers[key]
 	if !exists {
 		c.log("Transfer not authorized for", identification, "!")
@@ -122,8 +122,7 @@ func (c *chaninterface) OnAllowFile(address, identification string) (bool, strin
 	// add to active
 	c.active[address] = true
 	// name is address.identification to allow differentiating between same file from multiple peers
-	filename := address + "." + identification
-	return true, c.recpath + "/" + filename
+	return true, c.recpath + "/" + address + "." + identification
 }
 
 /*
@@ -142,7 +141,7 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 	}
 	/*TODO check request if file is delta / must be decrypted before applying to model*/
 	// get tran with key
-	key := address + ":" + identification
+	key := c.buildKey(address, identification)
 	tran, exists := c.inTransfers[key]
 	if !exists {
 		c.log("Transfer doesn't even exist anymore! Something bad went wrong...")
@@ -467,7 +466,7 @@ called once the send was successful.
 */
 func (c *chaninterface) sendFile(address, path, identification string, f channel.OnDone) error {
 	// key for keeping track of running transfers
-	key := address + ":" + identification
+	key := c.buildKey(address, identification)
 	// we must wrap the function, even if none was given because we'll need to remove the outTransfers
 	newFunction := func(success bool) {
 		delete(c.outTransfers, key)
@@ -492,7 +491,7 @@ func (c *chaninterface) sendFile(address, path, identification string, f channel
 }
 
 /*
-handleMessage looks at the message, fetches files if requried, and correctly
+handleMessage looks at the message, fetches files if required, and correctly
 applies it to the model.
 */
 func (c *chaninterface) handleMessage(address string, msg shared.UpdateMessage) error {
@@ -517,10 +516,26 @@ func (c *chaninterface) handleMessage(address string, msg shared.UpdateMessage) 
 	// if we receive a modify for a file that doesn't yet exist, modify it to create
 	if !c.tin.model.IsTracked(msg.Object.Path) && msg.Operation == shared.OpModify {
 		// this works because if it was removed we'd already have handled it
-		// TODO remove this once we know it works
-		log.Println("DEBUG: received modify for unknown file, changing to create!")
 		msg.Operation = shared.OpCreate
 	}
+	/*
+		TODO: fetch transfer, check if version is new in this new update message BEFORE cancelling it :P
+		TODO: handleMessage catches modifies for creates that have not yet been applied as: ChanInterface: handleMessage failed with: object untracked
+		FIXME!
+			// if a transfer was previously in progress, cancel it as we need the newer one
+			key := c.buildKey(address, msg.Object.Identification)
+			if c.inTransferExists(key) {
+				log.Println("DEBUG: TODO kill current and replace with updated!")
+				path := c.recpath + "/" + address + "." + msg.Object.Identification
+				err := c.tin.channel.CancelFileTransfer(path)
+				if err != nil {
+					c.log("Cancel of file transfer failed:", err.Error())
+				}
+				// remove file
+				_ = os.Remove(path)
+				// done with old one, so continue handling the new update
+			}
+	*/
 	// apply directories directly
 	if msg.Object.Directory {
 		// no merge because it should never happen for directories
@@ -553,6 +568,25 @@ func (c *chaninterface) mergeUpdate(msg shared.UpdateMessage) error {
 	}
 	// if merge error --> merge
 	return c.tin.merge(&msg)
+}
+
+/*
+inTransferExists returns true if a transfer for the given key currently exists.
+*/
+func (c *chaninterface) inTransferExists(transferKey string) bool {
+	for key := range c.inTransfers {
+		if key == transferKey {
+			return true
+		}
+	}
+	return false
+}
+
+/*
+buildKey builds a unique string value for the given parameters.
+*/
+func (c *chaninterface) buildKey(address string, identification string) string {
+	return address + ":" + identification
 }
 
 /*
