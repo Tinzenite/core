@@ -42,17 +42,6 @@ func createChannelInterface(t *Tinzenite) *chaninterface {
 		AllowLogging: true}
 }
 
-type transfer struct {
-	// last time this transfer was updated for timeout reasons
-	updated time.Time
-	// peers stores the addresses of all known peers that have the file update
-	peers []string
-	// function to execute once the file has been received
-	done onDone
-}
-
-type onDone func(address, path string)
-
 /*
 SyncModel fetches and synchronizes a remote model.
 */
@@ -79,9 +68,8 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 			// retransmit
 			return c.tin.channel.Send(address, rm.JSON())
 		}
-		// log.Println("TODO: IGNORING multiple request for", rm.Identification)
-		/*TODO implement that if version higher cancel old and restart new, additional peers*/
-		return shared.ErrUnsupported
+		c.log("Ignoring multiple request for", rm.Identification)
+		return nil
 	}
 	// create new transfer
 	tran := transfer{
@@ -169,6 +157,24 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 }
 
 /*
+OnFileCanceled is called when a file transfer is cancelled. In that case we remove
+the associated transfer.
+*/
+func (c *chaninterface) OnFileCanceled(address, path string) {
+	// to build the key we require the last element after the last '.'
+	list := strings.Split(path, ".")
+	index := len(list) - 1
+	// keep it sane
+	if index < 0 || index >= len(list) {
+		c.warn("OnFileCanceled: can not delete transfer: index out of range!")
+		return
+	}
+	// the last index string is the identification, so we can build the key
+	key := c.buildKey(address, list[index])
+	delete(c.inTransfers, key)
+}
+
+/*
 CallbackNewConnection is called when a bootstrap request comes in. This means
 that the OTHER peer is bootstrapping: all we need to do here is save the other's
 peer information and include it in the network if allowed.
@@ -240,7 +246,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				return
 			}
 			// handle the message and show log if error
-			err = c.handleMessage(address, *msg)
+			err = c.handleMessage(address, msg)
 			if err != nil {
 				c.log("handleMessage failed with:", err.Error())
 			}
@@ -452,7 +458,7 @@ func (c *chaninterface) onModelFileReceived(address, path string) {
 	}
 	// pretend that the updatemessage came from outside here
 	for _, um := range updateLists {
-		err := c.handleMessage(address, *um)
+		err := c.handleMessage(address, um)
 		if err != nil {
 			c.log("handleMessage failed with:", err.Error())
 		}
@@ -475,13 +481,13 @@ func (c *chaninterface) sendFile(address, path, identification string, f channel
 			f(success)
 		} else if !success {
 			// if no function was given still alert that send failed
-			log.Println("Transfer was not closed!", path)
+			log.Println("Transfer was not successful!", path)
 		}
 	}
 	// if it already exists, don't restart a new one!
 	_, exists := c.outTransfers[key]
 	if exists {
-		/*TODO maybe cancel old one and restart?*/
+		// receiving side must restart if it so wants to, we'll just keep sending the original one
 		return errors.New("out transfer already exists, will not resend")
 	}
 	// write that the transfer is happening
@@ -494,9 +500,9 @@ func (c *chaninterface) sendFile(address, path, identification string, f channel
 handleMessage looks at the message, fetches files if required, and correctly
 applies it to the model.
 */
-func (c *chaninterface) handleMessage(address string, msg shared.UpdateMessage) error {
-	// use check message to see if we can apply it or do something special
-	err := c.tin.model.CheckMessage(&msg)
+func (c *chaninterface) handleMessage(address string, msg *shared.UpdateMessage) error {
+	// use check message to prepare message and check for special cases
+	msg, err := c.tin.model.CheckMessage(msg)
 	// if update known --> ignore it
 	if err == model.ErrIgnoreUpdate {
 		return nil
@@ -510,47 +516,39 @@ func (c *chaninterface) handleMessage(address string, msg shared.UpdateMessage) 
 	}
 	// if still error, return it
 	if err != nil {
-		// TODO: see commented out code below, need to catch something here
 		return err
 	}
 	// --> IF CheckMessage was ok, we can now handle applying the message
-	// if we receive a modify for a file that doesn't yet exist, modify it to create
-	if !c.tin.model.IsTracked(msg.Object.Path) && msg.Operation == shared.OpModify {
-		// this works because if it was removed we'd already have handled it
-		msg.Operation = shared.OpCreate
+	// if a transfer was previously in progress, cancel it as we need the newer one
+	key := c.buildKey(address, msg.Object.Identification)
+	_, exists := c.inTransfers[key]
+	if exists {
+		path := c.recpath + "/" + address + "." + msg.Object.Identification
+		err := c.tin.channel.CancelFileTransfer(path)
+		// if canceling failed throw the error up
+		if err != nil {
+			return err
+		}
+		// remove transfer
+		delete(c.inTransfers, key)
+		// remove file if no error
+		_ = os.Remove(path)
+		// done with old one, so continue handling the new update
 	}
-	/*
-		TODO: fetch transfer, check if version is new in this new update message BEFORE cancelling it :P
-		TODO: handleMessage catches modifies for creates that have not yet been applied as: ChanInterface: handleMessage failed with: object untracked
-		FIXME!
-			// if a transfer was previously in progress, cancel it as we need the newer one
-			key := c.buildKey(address, msg.Object.Identification)
-			if c.inTransferExists(key) {
-				log.Println("DEBUG: TODO kill current and replace with updated!")
-				path := c.recpath + "/" + address + "." + msg.Object.Identification
-				err := c.tin.channel.CancelFileTransfer(path)
-				if err != nil {
-					c.log("Cancel of file transfer failed:", err.Error())
-				}
-				// remove file
-				_ = os.Remove(path)
-				// done with old one, so continue handling the new update
-			}
-	*/
 	// apply directories directly
 	if msg.Object.Directory {
 		// no merge because it should never happen for directories
-		return c.tin.model.ApplyUpdateMessage(&msg)
+		return c.tin.model.ApplyUpdateMessage(msg)
 	}
 	op := msg.Operation
 	// create and modify must first fetch the file
 	if op == shared.OpCreate || op == shared.OpModify {
-		c.remoteUpdate(address, msg)
+		c.remoteUpdate(address, *msg)
 		// errors may turn up but only when the file has been received, so done here
 		return nil
 	} else if op == shared.OpRemove {
 		// remove is without file transfer, so directly apply
-		return c.mergeUpdate(msg)
+		return c.mergeUpdate(*msg)
 	}
 	c.warn("Unknown operation received, ignoring update message!")
 	return shared.ErrIllegalParameters
@@ -569,18 +567,6 @@ func (c *chaninterface) mergeUpdate(msg shared.UpdateMessage) error {
 	}
 	// if merge error --> merge
 	return c.tin.merge(&msg)
-}
-
-/*
-inTransferExists returns true if a transfer for the given key currently exists.
-*/
-func (c *chaninterface) inTransferExists(transferKey string) bool {
-	for key := range c.inTransfers {
-		if key == transferKey {
-			return true
-		}
-	}
-	return false
 }
 
 /*
