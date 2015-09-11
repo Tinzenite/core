@@ -179,7 +179,7 @@ CallbackNewConnection is called when a bootstrap request comes in. This means
 that the OTHER peer is bootstrapping: all we need to do here is save the other's
 peer information and include it in the network if allowed.
 */
-func (c *chaninterface) OnNewConnection(address, message string) {
+func (c *chaninterface) OnFriendRequest(address, message string) {
 	if c.tin.peerValidation == nil {
 		c.warn("PeerValidation() callback is unimplemented, can not connect!")
 		return
