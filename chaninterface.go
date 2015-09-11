@@ -377,7 +377,7 @@ func (c *chaninterface) onNotifyMessage(address string, nm shared.NotifyMessage)
 	}
 	// check if removal even exists
 	path := c.tin.model.Root + "/" + shared.TINZENITEDIR + "/" + shared.REMOVEDIR + "/" + nm.Identification
-	if !shared.FileExists(path) {
+	if exists, _ := shared.DirectoryExists(path); !exists {
 		c.warn("Notify received for non existant removal, ignoring!")
 		return
 	}
