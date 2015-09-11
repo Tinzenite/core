@@ -61,6 +61,7 @@ SyncLocal changes. Will send updates to connected peers but not synchronize with
 other peers.
 */
 func (t *Tinzenite) SyncLocal() error {
+	// TODO this shouldn't be here... place somewhere else?
 	// update peers
 	err := t.applyPeers()
 	if err != nil {
@@ -111,7 +112,7 @@ func (t *Tinzenite) Store() error {
 	}
 	// write all peers to files
 	for _, peer := range t.allPeers {
-		err := peer.Store(t.Path)
+		err := peer.StoreTo(t.Path + "/" + shared.STOREPEERDIR)
 		if err != nil {
 			return err
 		}
@@ -124,12 +125,12 @@ func (t *Tinzenite) Store() error {
 	toxPeerDump := &shared.ToxPeerDump{
 		SelfPeer: t.selfpeer,
 		ToxData:  toxData}
-	err = toxPeerDump.Store(t.Path)
+	err = toxPeerDump.StoreTo(t.Path + "/" + shared.STORETOXDUMPDIR)
 	if err != nil {
 		return err
 	}
 	// store auth file
-	err = t.auth.Store(t.Path)
+	err = t.auth.StoreTo(t.Path + "/" + shared.STOREAUTHDIR)
 	if err != nil {
 		return err
 	}

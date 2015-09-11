@@ -81,15 +81,16 @@ func createAuthentication(path, dirname, username, password string) (*Authentica
 }
 
 /*
-Store the authentication file to disk as json.
+StoreTo the given path the authentication file to disk as json.
 */
-func (a *Authentication) Store(root string) error {
+func (a *Authentication) StoreTo(path string) error {
 	// write auth file
 	data, err := json.MarshalIndent(a, "", "  ")
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(root+"/"+shared.TINZENITEDIR+"/"+shared.ORGDIR+"/"+shared.AUTHJSON, data, shared.FILEPERMISSIONMODE)
+	path = path + "/" + shared.AUTHJSON
+	return ioutil.WriteFile(path, data, shared.FILEPERMISSIONMODE)
 }
 
 func (a *Authentication) initCipher(password []byte) error {
