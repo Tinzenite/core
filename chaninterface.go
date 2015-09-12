@@ -47,7 +47,7 @@ SyncModel fetches and synchronizes a remote model.
 */
 func (c *chaninterface) SyncModel(address string) {
 	// create & modify must first fetch file
-	rm := shared.CreateRequestMessage(shared.ReModel, shared.IDMODEL)
+	rm := shared.CreateRequestMessage(shared.OtModel, shared.IDMODEL)
 	// request file and apply update on success
 	c.requestFile(address, rm, c.onModelFileReceived)
 }
@@ -258,7 +258,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 				log.Println(err.Error())
 				return
 			}
-			if msg.Request == shared.ReModel {
+			if msg.ObjType == shared.OtModel {
 				// c.log("Received model message!")
 				c.onRequestModelMessage(address, *msg)
 			} else {
@@ -273,7 +273,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 			}
 			c.onNotifyMessage(address, *msg)
 		default:
-			c.warn("Unknown object sent: " + msgType.String() + "!")
+			c.warn("Unknown object received:", msgType.String())
 		}
 		// If it was JSON, we're done if we can't do anything with it
 		return
@@ -289,7 +289,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 
 func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessage) {
 	// this means we need to send our selfpeer (used for bootstrapping)
-	if msg.Request == shared.RePeer {
+	if msg.ObjType == shared.OtPeer {
 		// TODO check if this is really still in use?
 		log.Println("DEBUG: YES, this is still in use. Why? Bootstrap should have fixed this...")
 		// so build a bogus update message and send that
@@ -409,7 +409,7 @@ func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
 		return
 	}
 	// create & modify must first fetch file
-	rm := shared.CreateRequestMessage(shared.ReObject, msg.Object.Identification)
+	rm := shared.CreateRequestMessage(shared.OtObject, msg.Object.Identification)
 	// request file and apply update on success
 	c.requestFile(address, rm, func(address, path string) {
 		// rename to correct name for model
