@@ -294,7 +294,7 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 		log.Println("DEBUG: YES, this is still in use. Why? Bootstrap should have fixed this...")
 		// so build a bogus update message and send that
 		peerPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR + "/" + c.tin.selfpeer.Identification + shared.ENDING
-		fullPath := shared.CreatePath(c.tin.model.Root, peerPath)
+		fullPath := shared.CreatePath(c.tin.model.RootPath, peerPath)
 		obj, err := c.tin.model.GetInfo(fullPath)
 		if err != nil {
 			c.log("onRequestMessage:", err.Error())
@@ -317,7 +317,7 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 		return
 	}
 	// so send file
-	err = c.sendFile(address, c.tin.model.Root+"/"+obj.Path, msg.Identification, nil)
+	err = c.sendFile(address, c.tin.model.RootPath+"/"+obj.Path, msg.Identification, nil)
 	if err != nil {
 		c.log("failed to send file:", err.Error())
 	}
@@ -376,7 +376,7 @@ func (c *chaninterface) onNotifyMessage(address string, nm shared.NotifyMessage)
 		return
 	}
 	// check if removal even exists
-	path := c.tin.model.Root + "/" + shared.TINZENITEDIR + "/" + shared.REMOVEDIR + "/" + nm.Identification
+	path := c.tin.model.RootPath + "/" + shared.TINZENITEDIR + "/" + shared.REMOVEDIR + "/" + nm.Identification
 	if exists, _ := shared.DirectoryExists(path); !exists {
 		c.warn("Notify received for non existant removal, ignoring!")
 		return
