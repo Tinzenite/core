@@ -26,8 +26,9 @@ type Authentication struct {
 /*
 loadAuthentication loads the auth.json file for the given Tinzenite directory.
 */
-func loadAuthentication(path string, password string) (*Authentication, error) {
-	data, err := ioutil.ReadFile(path + "/" + shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.AUTHJSON)
+func loadAuthenticationFrom(path string, password string) (*Authentication, error) {
+	path = path + "/" + shared.AUTHJSON
+	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

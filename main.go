@@ -92,7 +92,7 @@ func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
 	}
 	t := &Tinzenite{Path: dirpath}
 	// load auth
-	auth, err := loadAuthentication(dirpath, password)
+	auth, err := loadAuthenticationFrom(dirpath+"/"+shared.STOREAUTHDIR, password)
 	if err != nil {
 		return nil, err
 	}
