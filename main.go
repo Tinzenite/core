@@ -98,7 +98,7 @@ func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
 	}
 	t.auth = auth
 	// load model
-	model, err := model.Load(dirpath + "/" + shared.STOREMODELDIR)
+	model, err := model.LoadFrom(dirpath + "/" + shared.STOREMODELDIR)
 	if err != nil {
 		return nil, err
 	}
