@@ -1,8 +1,6 @@
 package core
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
 	"encoding/json"
 	"io/ioutil"
@@ -16,11 +14,13 @@ import (
 Authentication file.
 */
 type Authentication struct {
-	User    string
-	Dirname string
-	DirID   string
-	Key     string
-	block   cipher.Block /*TODO use authenticated encryption*/
+	User         string // hash of username
+	Dirname      string // official name of directory
+	DirID        string // random id of directory
+	PasswordHash []byte // hash to check password against
+	Secure       []byte // box encrypted private and public keys with password
+	private      []byte // private key if unlocked
+	public       []byte // public key if unlocked
 }
 
 /*
@@ -37,14 +37,14 @@ func loadAuthenticationFrom(path string, password string) (*Authentication, erro
 	if err != nil {
 		return nil, err
 	}
-	/*TODO check if password ok and use to decrypt key for init*/
 	// Bcrypt check password
-	err = bcrypt.CompareHashAndPassword([]byte(auth.Key), []byte(password))
+	err = bcrypt.CompareHashAndPassword(auth.PasswordHash, []byte(password))
 	if err != nil {
 		// doesn't match!
 		return nil, err
 	}
-	auth.initCipher([]byte(auth.Key))
+	// IF the password was valid we use it to init the cipher
+	// TODO
 	return auth, nil
 }
 
@@ -70,14 +70,14 @@ func createAuthentication(path, dirname, username, password string) (*Authentica
 	if err != nil {
 		return nil, err
 	}
-	/*TODO store key encrypted with password!*/
+	// build authentication object
 	auth := &Authentication{
-		User:    string(userhash),
-		Dirname: dirname,
-		DirID:   id,
-		Key:     string(passhash)}
-	// init cipher once key is available
-	auth.initCipher(passhash)
+		User:         string(userhash),
+		Dirname:      dirname,
+		DirID:        id,
+		PasswordHash: passhash}
+	// use password to build keys for encryption
+	// TODO
 	return auth, nil
 }
 
@@ -94,15 +94,14 @@ func (a *Authentication) StoreTo(path string) error {
 	return ioutil.WriteFile(path, data, shared.FILEPERMISSIONMODE)
 }
 
-func (a *Authentication) initCipher(password []byte) error {
-	/*TODO use password to get key, don't need cipher if that fails*/
-	/*TODO: Go has support for other modes which do support integrity and authentication checks. As rossum said you can use GCM or CCM. You can find lots of examples on godoc.org. For example HashiCorp's memberlist library. */
-	// need to initialize the block cipher:
-	block, err := aes.NewCipher(password)
-	if err != nil {
-		/*TODO implement what happens when password / cipher fails! --> strong error!*/
-		return err
-	}
-	a.block = block
-	return nil
+/*
+BuildChallenge builds a challenge to issue to an online peer to check whether it
+is a valid trusted peer.
+*/
+func (a *Authentication) BuildChallenge() (string, error) {
+	// TODO implement
+	/*HOWTO: send number. Correct response is (number+1)*/
+	//TODO: need to build message, encrypt it, and return it
+	// NOTE: it looks like what we'll need to send is: encrypted and nonce, so remove nonce from WITHIN the message
+	return "", shared.ErrUnsupported
 }
