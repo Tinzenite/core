@@ -1,13 +1,17 @@
 package core
 
 import (
-	"crypto/rand"
+	rand "crypto/rand"
 	"encoding/json"
+	"hash/fnv"
 	"io/ioutil"
+	"log"
+	unsecure "math/rand"
 
 	"github.com/tinzenite/shared"
 
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/crypto/nacl/box"
 )
 
 /*
@@ -79,6 +83,29 @@ func createAuthentication(path, dirname, username, password string) (*Authentica
 	// use password to build keys for encryption
 	// TODO
 	return auth, nil
+}
+
+func (a *Authentication) loadCrypto(password string) {
+	// hash password
+	// use hash as seed for random
+	// use random to generate pub and priv keys
+	// unlock enc keys
+	// set enc keys
+}
+
+func (a *Authentication) createCrypto(password string) {
+	// build seed from password
+	hasher := fnv.New64a()
+	hasher.Write([]byte(password))
+	seed := int64(hasher.Sum64())
+	log.Println("DEBUG: seed:", seed)
+	// use hash as seed for random
+	seededRandom := unsecure.New(unsecure.NewSource(seed))
+	// TODO: make seededRandom implement io.Reader interface so we can use it for box
+	// use random to generate pub and priv keys
+	keyPub, keyPriv, err := box.GenerateKey(seededRandom)
+	// build random enc keys
+	// encrypt enc keys with pub and priv
 }
 
 /*
