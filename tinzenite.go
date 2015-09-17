@@ -46,6 +46,7 @@ func (t *Tinzenite) SyncRemote() error {
 	if err != nil {
 		return err
 	}
+	// FIXME should iterate over peers instead
 	online, err := t.channel.OnlineAddresses()
 	if err != nil {
 		return err
@@ -61,12 +62,6 @@ SyncLocal changes. Will send updates to connected peers but not synchronize with
 other peers.
 */
 func (t *Tinzenite) SyncLocal() error {
-	// TODO this shouldn't be here... place somewhere else?
-	// update peers
-	err := t.applyPeers()
-	if err != nil {
-		return err
-	}
 	// update model
 	return t.model.Update()
 }
@@ -230,6 +225,7 @@ func (t *Tinzenite) applyPeers() error {
 		// tox will return an error if the address has already been added, so we just ignore it
 		_ = t.channel.AcceptConnection(peer.Address)
 	}
+	// TODO check initialized and online, start authentication FIXME
 	// finally apply
 	t.allPeers = peers
 	return nil
@@ -327,11 +323,19 @@ func (t *Tinzenite) background() {
 	defer func() { log.Println("Tinzenite: Background process stopped.") }()
 	// timer for long transfer feedback
 	transferTicker := time.Tick(5 * time.Second)
+	// timer for peer management
+	peerTicker := time.Tick(10 * time.Second)
 	for {
 		select {
 		case <-t.stop:
 			t.wg.Done()
 			return
+		case <-peerTicker:
+			// update peers
+			err := t.applyPeers()
+			if err != nil {
+				log.Println("Tin: error applying peers:", err)
+			}
 		case <-transferTicker:
 			currentTransfers := t.channel.ActiveTransfers()
 			// if currently none, done
