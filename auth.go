@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"hash/fnv"
 	"io/ioutil"
-	"log"
 	unsecure "math/rand"
 
 	"github.com/tinzenite/shared"
@@ -18,13 +17,25 @@ import (
 Authentication file.
 */
 type Authentication struct {
-	User         string // hash of username
-	Dirname      string // official name of directory
-	DirID        string // random id of directory
-	PasswordHash []byte // hash to check password against
-	Secure       []byte // box encrypted private and public keys with password
-	private      []byte // private key if unlocked
-	public       []byte // public key if unlocked
+	User         string    // hash of username
+	Dirname      string    // official name of directory
+	DirID        string    // random id of directory
+	PasswordHash []byte    // hash to check password against
+	Secure       []byte    // box encrypted private and public keys with password
+	Nonce        *[24]byte // nonce for Secure
+	private      *[32]byte // private key if unlocked
+	public       *[32]byte // public key if unlocked
+}
+
+type staticRandom struct {
+	random *unsecure.Rand
+}
+
+func (s staticRandom) Read(data []byte) (int, error) {
+	for index := range data[:] {
+		data[index] = byte(s.random.Int63())
+	}
+	return len(data), nil
 }
 
 /*
@@ -93,19 +104,49 @@ func (a *Authentication) loadCrypto(password string) {
 	// set enc keys
 }
 
-func (a *Authentication) createCrypto(password string) {
+func (a *Authentication) createCrypto(password string) error {
 	// build seed from password
 	hasher := fnv.New64a()
 	hasher.Write([]byte(password))
 	seed := int64(hasher.Sum64())
-	log.Println("DEBUG: seed:", seed)
 	// use hash as seed for random
 	seededRandom := unsecure.New(unsecure.NewSource(seed))
-	// TODO: make seededRandom implement io.Reader interface so we can use it for box
-	// use random to generate pub and priv keys
-	keyPub, keyPriv, err := box.GenerateKey(seededRandom)
-	// build random enc keys
+	// make seededRandom implement io.Reader interface so we can use it for box
+	wrapper := staticRandom{random: seededRandom}
+	// use static random to generate pub and priv keys
+	lockPubKey, lockPrivKey, err := box.GenerateKey(wrapper)
+	if err != nil {
+		return err
+	}
+	// build TRULY random enc keys
+	encPubKey, encPrivKey, err := box.GenerateKey(rand.Reader)
+	// set them (this also immediately unlocks this auth, so no need to call load afterwards)
+	a.private = encPrivKey
+	a.public = encPubKey
+	// build encrypted key box
+	message := make([]byte, 64)
+	for i := 0; i < 32; i++ { // first write public key to it
+		message[i] = encPubKey[i]
+	}
+	for i := 0; i < 32; i++ { // then write private key to it
+		message[i+32] = encPrivKey[i]
+	}
+	// create nonce
+	nonce := make([]byte, 24)
+	rand.Read(nonce)
+	a.Nonce = new([24]byte)
+	for i := 0; i < 24; i++ {
+		a.Nonce[i] = nonce[i]
+	}
 	// encrypt enc keys with pub and priv
+	a.Secure = box.Seal(a.Secure, message, a.Nonce, lockPubKey, lockPrivKey)
+	/*
+		log.Println("NONCE:", a.Nonce)
+		log.Println("PUB:", a.public)
+		log.Println("PRI:", a.private)
+		log.Printf("%+v\n", a)
+	*/
+	return nil
 }
 
 /*
