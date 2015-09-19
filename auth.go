@@ -2,13 +2,10 @@ package core
 
 import (
 	rand "crypto/rand"
-	"encoding/binary"
 	"encoding/json"
 	"hash/fnv"
 	"io/ioutil"
 	"log"
-	"math"
-	"math/big"
 	unsecure "math/rand"
 
 	"github.com/tinzenite/shared"
@@ -117,28 +114,6 @@ func (a *Authentication) StoreTo(path string) error {
 	}
 	path = path + "/" + shared.AUTHJSON
 	return ioutil.WriteFile(path, data, shared.FILEPERMISSIONMODE)
-}
-
-/*
-BuildChallenge builds a challenge to issue to an online peer to check whether it
-is a valid trusted peer.
-*/
-func (a *Authentication) BuildChallenge() ([]byte, error) {
-	// generate a secure random number with room for the operation
-	bigNumber, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64-1))
-	if err != nil {
-		return nil, err
-	}
-	// convert back to int64
-	number := bigNumber.Int64()
-	log.Println("DEBUG: challenge:", number)
-	// convert to data payload
-	var data []byte
-	_ = binary.PutVarint(data, number)
-	// get a nonce
-	nonce := a.createNonce()
-	// encrypt number with nonce
-	return a.Encrypt(data, nonce)
 }
 
 /*
