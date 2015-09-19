@@ -1,6 +1,9 @@
 package core
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 /*
 transferTimeout is the time after which a file is re-requested.
@@ -17,4 +20,12 @@ const (
 	LOCAL  = ".LOCAL"
 	REMOTE = ".REMOTE"
 	MODEL  = ".MODEL"
+)
+
+var (
+	errAuthEncryption      = errors.New("encryption failed")
+	errAuthDecryption      = errors.New("decryption failed")
+	errAuthInvalidKeys     = errors.New("keys are invalid")
+	errAuthInvalidSecure   = errors.New("secure is invalid")
+	errAuthInvalidPassword = errors.New("password derived keys are incorrect")
 )

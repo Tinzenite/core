@@ -2,10 +2,13 @@ package core
 
 import (
 	rand "crypto/rand"
+	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"hash/fnv"
 	"io/ioutil"
+	"log"
+	"math"
+	"math/big"
 	unsecure "math/rand"
 
 	"github.com/tinzenite/shared"
@@ -60,7 +63,10 @@ func loadAuthenticationFrom(path string, password string) (*Authentication, erro
 		return nil, err
 	}
 	// IF the password was valid we use it to init the cipher
-	// TODO
+	err = auth.loadCrypto(password)
+	if err != nil {
+		return nil, err
+	}
 	return auth, nil
 }
 
@@ -93,8 +99,74 @@ func createAuthentication(path, dirname, username, password string) (*Authentica
 		DirID:        id,
 		PasswordHash: passhash}
 	// use password to build keys for encryption
-	// TODO
+	err = auth.createCrypto(password)
+	if err != nil {
+		return nil, err
+	}
 	return auth, nil
+}
+
+/*
+StoreTo the given path the authentication file to disk as json.
+*/
+func (a *Authentication) StoreTo(path string) error {
+	// write auth file
+	data, err := json.MarshalIndent(a, "", "  ")
+	if err != nil {
+		return err
+	}
+	path = path + "/" + shared.AUTHJSON
+	return ioutil.WriteFile(path, data, shared.FILEPERMISSIONMODE)
+}
+
+/*
+BuildChallenge builds a challenge to issue to an online peer to check whether it
+is a valid trusted peer.
+*/
+func (a *Authentication) BuildChallenge() ([]byte, error) {
+	// generate a secure random number with room for the operation
+	bigNumber, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64-1))
+	if err != nil {
+		return nil, err
+	}
+	// convert back to int64
+	number := bigNumber.Int64()
+	log.Println("DEBUG: challenge:", number)
+	// convert to data payload
+	var data []byte
+	_ = binary.PutVarint(data, number)
+	// get a nonce
+	nonce := a.createNonce()
+	// encrypt number with nonce
+	return a.Encrypt(data, nonce)
+}
+
+/*
+Encrypt returns the data in encrypted form, given that the keys are valid.
+*/
+func (a *Authentication) Encrypt(data []byte, nonce *[24]byte) ([]byte, error) {
+	if a.private == nil || a.public == nil {
+		return nil, errAuthInvalidKeys
+	}
+	// byte array to write encrypted data to
+	var encrypted []byte
+	return box.Seal(encrypted, data, nonce, a.public, a.private), nil
+}
+
+/*
+Decrypt returns the unencrypted data, given that the keys are valid.
+*/
+func (a *Authentication) Decrypt(encrypted []byte, nonce *[24]byte) ([]byte, error) {
+	if a.private == nil || a.public == nil {
+		return nil, errAuthInvalidKeys
+	}
+	// byte array to write data to
+	var data []byte
+	data, ok := box.Open(data, encrypted, nonce, a.public, a.private)
+	if !ok {
+		return nil, errAuthDecryption
+	}
+	return data, nil
 }
 
 func (a *Authentication) loadCrypto(password string) error {
@@ -112,11 +184,12 @@ func (a *Authentication) loadCrypto(password string) error {
 	data, ok := box.Open(data, a.Secure, a.Nonce, lockPub, lockPriv)
 	// TODO I think this means the keys aren't ok, which means wrong password:
 	if !ok {
-		return errors.New("decryption failed")
+		log.Println("DEBUG: does this error mean that the wrong password was used to decrypt?")
+		return errAuthInvalidPassword
 	}
 	// check if data is as expected
 	if len(data) != 64 {
-		return errors.New("secure container does not encrypt to valid keys")
+		return errAuthInvalidSecure
 	}
 	// prepare keys
 	a.public = new([32]byte)
@@ -147,12 +220,7 @@ func (a *Authentication) createCrypto(password string) error {
 		message[i+32] = encPrivKey[i]
 	}
 	// create nonce
-	nonce := make([]byte, 24)
-	rand.Read(nonce)
-	a.Nonce = new([24]byte)
-	for i := 0; i < 24; i++ {
-		a.Nonce[i] = nonce[i]
-	}
+	a.Nonce = a.createNonce()
 	// get keys from password
 	lockPub, lockPriv, err := a.convertPassword(password)
 	if err != nil {
@@ -184,26 +252,14 @@ func (a *Authentication) convertPassword(password string) (public *[32]byte, pri
 }
 
 /*
-StoreTo the given path the authentication file to disk as json.
+createNonce returns a new truly random nonce fit for all purposes.
 */
-func (a *Authentication) StoreTo(path string) error {
-	// write auth file
-	data, err := json.MarshalIndent(a, "", "  ")
-	if err != nil {
-		return err
+func (a *Authentication) createNonce() *[24]byte {
+	randValues := make([]byte, 24)
+	rand.Read(randValues)
+	nonce := new([24]byte)
+	for i := 0; i < 24; i++ {
+		nonce[i] = randValues[i]
 	}
-	path = path + "/" + shared.AUTHJSON
-	return ioutil.WriteFile(path, data, shared.FILEPERMISSIONMODE)
-}
-
-/*
-BuildChallenge builds a challenge to issue to an online peer to check whether it
-is a valid trusted peer.
-*/
-func (a *Authentication) BuildChallenge() (string, error) {
-	// TODO implement
-	/*HOWTO: send number. Correct response is (number+1)*/
-	//TODO: need to build message, encrypt it, and return it
-	// NOTE: it looks like what we'll need to send is: encrypted and nonce, so remove nonce from WITHIN the message
-	return "", shared.ErrUnsupported
+	return nonce
 }
