@@ -3,6 +3,7 @@ package core
 import (
 	rand "crypto/rand"
 	"encoding/json"
+	"errors"
 	"hash/fnv"
 	"io/ioutil"
 	unsecure "math/rand"
@@ -96,28 +97,42 @@ func createAuthentication(path, dirname, username, password string) (*Authentica
 	return auth, nil
 }
 
-func (a *Authentication) loadCrypto(password string) {
-	// hash password
-	// use hash as seed for random
-	// use random to generate pub and priv keys
-	// unlock enc keys
-	// set enc keys
-}
-
-func (a *Authentication) createCrypto(password string) error {
-	// build seed from password
-	hasher := fnv.New64a()
-	hasher.Write([]byte(password))
-	seed := int64(hasher.Sum64())
-	// use hash as seed for random
-	seededRandom := unsecure.New(unsecure.NewSource(seed))
-	// make seededRandom implement io.Reader interface so we can use it for box
-	wrapper := staticRandom{random: seededRandom}
-	// use static random to generate pub and priv keys
-	lockPubKey, lockPrivKey, err := box.GenerateKey(wrapper)
+func (a *Authentication) loadCrypto(password string) error {
+	// ensure all values are valid
+	if a.Secure == nil || a.Nonce == nil {
+		return shared.ErrIllegalParameters
+	}
+	// get keys from password
+	lockPub, lockPriv, err := a.convertPassword(password)
 	if err != nil {
 		return err
 	}
+	// unlock enc keys
+	var data []byte
+	data, ok := box.Open(data, a.Secure, a.Nonce, lockPub, lockPriv)
+	// TODO I think this means the keys aren't ok, which means wrong password:
+	if !ok {
+		return errors.New("decryption failed")
+	}
+	// check if data is as expected
+	if len(data) != 64 {
+		return errors.New("secure container does not encrypt to valid keys")
+	}
+	// prepare keys
+	a.public = new([32]byte)
+	a.private = new([32]byte)
+	// split enc keys from data
+	for i := 0; i < 32; i++ { // first read public key from it
+		a.public[i] = data[i]
+	}
+	for i := 0; i < 32; i++ { // then read private key from it
+		a.private[i] = data[i+32]
+	}
+	// and done... theoretically
+	return nil
+}
+
+func (a *Authentication) createCrypto(password string) error {
 	// build TRULY random enc keys
 	encPubKey, encPrivKey, err := box.GenerateKey(rand.Reader)
 	// set them (this also immediately unlocks this auth, so no need to call load afterwards)
@@ -138,15 +153,34 @@ func (a *Authentication) createCrypto(password string) error {
 	for i := 0; i < 24; i++ {
 		a.Nonce[i] = nonce[i]
 	}
+	// get keys from password
+	lockPub, lockPriv, err := a.convertPassword(password)
+	if err != nil {
+		return err
+	}
 	// encrypt enc keys with pub and priv
-	a.Secure = box.Seal(a.Secure, message, a.Nonce, lockPubKey, lockPrivKey)
-	/*
-		log.Println("NONCE:", a.Nonce)
-		log.Println("PUB:", a.public)
-		log.Println("PRI:", a.private)
-		log.Printf("%+v\n", a)
-	*/
+	a.Secure = box.Seal(a.Secure, message, a.Nonce, lockPub, lockPriv)
 	return nil
+}
+
+/*
+convertPassword generates a public and private key from the given password.
+*/
+func (a *Authentication) convertPassword(password string) (public *[32]byte, private *[32]byte, err error) {
+	// build seed from password
+	hasher := fnv.New64a()
+	hasher.Write([]byte(password))
+	seed := int64(hasher.Sum64())
+	// use hash as seed for random
+	seededRandom := unsecure.New(unsecure.NewSource(seed))
+	// make seededRandom implement io.Reader interface so we can use it for box
+	wrapper := staticRandom{random: seededRandom}
+	// use static random to generate pub and priv keys
+	public, private, err = box.GenerateKey(wrapper)
+	if err != nil {
+		return nil, nil, err
+	}
+	return public, private, nil
 }
 
 /*
