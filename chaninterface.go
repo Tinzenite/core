@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"log"
 	"os"
@@ -241,6 +242,16 @@ func (c *chaninterface) OnMessage(address, message string) {
 	}
 	// if unmarshal didn't work check for plain commands:
 	switch message {
+	case "auth":
+		// build and sent valid auth
+		data := make([]byte, binary.MaxVarintLen64)
+		_ = binary.PutVarint(data, int64(42))
+		// get a nonce
+		nonce := c.tin.auth.createNonce()
+		// encrypt number with nonce
+		encrypted, _ := c.tin.auth.Encrypt(data, nonce)
+		reply := shared.CreateAuthenticationMessage(encrypted, nonce)
+		c.tin.channel.Send(address, reply.JSON())
 	default:
 		// NOTE: Currently none implemented
 		c.log("Received", message)

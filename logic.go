@@ -111,6 +111,10 @@ func (c *chaninterface) onAuthenticationMessage(address string, msg shared.Authe
 	nonce := c.tin.auth.createNonce()
 	// encrypt number with nonce
 	encrypted, err := c.tin.auth.Encrypt(data, nonce)
+	if err != nil {
+		log.Println("Logic: failed to encrypt:", err)
+		return
+	}
 	reply := shared.CreateAuthenticationMessage(encrypted, nonce)
 	// send reply
 	_ = c.tin.channel.Send(address, reply.JSON())
