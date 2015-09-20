@@ -15,16 +15,13 @@ chaninterface implements the channel.Callbacks interface so that Tinzenite doesn
 export them unnecessarily.
 */
 type chaninterface struct {
-	// reference back to Tinzenite
-	tin *Tinzenite
-	// map of transfer objects, referenced by the object id. Both for in and out.
-	inTransfers  map[string]transfer
-	outTransfers map[string]bool
-	// active stores all active file transfers so that we avoid getting multiple files from one peer at once
-	active       map[string]bool
-	recpath      string
-	temppath     string
-	AllowLogging bool
+	tin          *Tinzenite          // reference back to Tinzenite
+	inTransfers  map[string]transfer // map of in transfers, referenced by the object id
+	outTransfers map[string]bool     // map of out transfers, referenced by the object id
+	active       map[string]bool     // stores running transfers
+	challenges   map[string]int64    // store of SENT challenges. key is address, value is sent number
+	recpath      string              // shortcut to receiving dir
+	temppath     string              // shortcut to temp dir
 }
 
 func createChannelInterface(t *Tinzenite) *chaninterface {
@@ -33,9 +30,9 @@ func createChannelInterface(t *Tinzenite) *chaninterface {
 		inTransfers:  make(map[string]transfer),
 		outTransfers: make(map[string]bool),
 		active:       make(map[string]bool),
+		challenges:   make(map[string]int64),
 		recpath:      t.Path + "/" + shared.TINZENITEDIR + "/" + shared.RECEIVINGDIR,
-		temppath:     t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR,
-		AllowLogging: true}
+		temppath:     t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR}
 }
 
 // -------------------------CALLBACKS-------------------------------------------
@@ -172,7 +169,7 @@ func (c *chaninterface) OnFriendRequest(address, message string) {
 	// ensure that address is correct by overwritting sent address with real one
 	peer.Address = address
 	// add peer to local list
-	c.tin.allPeers = append(c.tin.allPeers, peer)
+	c.tin.peers[address] = peer
 	// try store new peer to disk
 	_ = c.tin.Store()
 }

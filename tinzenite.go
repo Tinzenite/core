@@ -22,7 +22,7 @@ type Tinzenite struct {
 	selfpeer       *shared.Peer
 	channel        *channel.Channel
 	cInterface     *chaninterface
-	allPeers       []*shared.Peer
+	peers          map[string]*shared.Peer
 	model          *model.Model
 	sendChannel    chan shared.UpdateMessage
 	muteFlag       bool
@@ -106,7 +106,7 @@ func (t *Tinzenite) Store() error {
 		return err
 	}
 	// write all peers to files
-	for _, peer := range t.allPeers {
+	for _, peer := range t.peers {
 		err := peer.StoreTo(t.Path + "/" + shared.STOREPEERDIR)
 		if err != nil {
 			return err
@@ -174,8 +174,8 @@ TODO: maybe not use name but Identification?
 TODO: when will other peers remove it? They need to remove the contact info from the channel... FIXME
 */
 func (t *Tinzenite) DisconnectPeer(peerName string) {
-	var newPeers []*shared.Peer
-	for _, peer := range t.allPeers {
+	newPeers := make(map[string]*shared.Peer)
+	for _, peer := range t.peers {
 		if t.selfpeer.Identification == peer.Identification {
 			continue
 		}
@@ -207,9 +207,9 @@ func (t *Tinzenite) DisconnectPeer(peerName string) {
 			// continue does not readd to tinzenite, removing the reference to it
 			continue
 		}
-		newPeers = append(newPeers, peer)
+		newPeers[peer.Address] = peer
 	}
-	t.allPeers = newPeers
+	t.peers = newPeers
 }
 
 /*
@@ -229,7 +229,7 @@ func (t *Tinzenite) applyPeers() error {
 	}
 	// TODO check initialized and online, start authentication FIXME
 	// finally apply
-	t.allPeers = peers
+	t.peers = peers
 	return nil
 }
 

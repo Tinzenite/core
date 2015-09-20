@@ -57,8 +57,12 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 		failed = true
 		return nil, err
 	}
+	// set own peer
 	tinzenite.selfpeer = peer
-	tinzenite.allPeers = []*shared.Peer{peer}
+	// prepare peer list
+	tinzenite.peers = make(map[string]*shared.Peer)
+	// add own peer to list of all peers
+	tinzenite.peers[peer.Address] = peer
 	// build model (can block for long!)
 	m, err := model.Create(dirpath, peer.Identification, dirpath+"/"+shared.STOREMODELDIR)
 	if err != nil {
@@ -103,12 +107,12 @@ func LoadTinzenite(dirpath, password string) (*Tinzenite, error) {
 		return nil, err
 	}
 	t.model = model
-	// load peer list (don't use t.applyPeers – channel not running yet!)
+	// load peer list
 	peers, err := shared.LoadPeers(dirpath)
 	if err != nil {
 		return nil, err
 	}
-	t.allPeers = peers
+	t.peers = peers
 	// load tox dump
 	selfToxDump, err := shared.LoadToxDumpFrom(dirpath + "/" + shared.STORETOXDUMPDIR)
 	if err != nil {

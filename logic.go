@@ -1,6 +1,8 @@
 package core
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
@@ -55,8 +57,36 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 }
 
 func (c *chaninterface) onAuthenticationMessage(address string, msg shared.AuthenticationMessage) {
-	// if we receive a challenge we must check whether we sent the challenge
-	// if yes check answer
+	// check if reply to sent challenge
+	if number, exists := c.challenges[address]; exists {
+		// if yes check if answer is valid
+		data, err := c.tin.auth.Decrypt(msg.Encrypted, msg.Nonce)
+		if err != nil {
+			log.Println("Logic: failed to decrypt:", err)
+			return
+		}
+		response, err := binary.ReadVarint(bytes.NewBuffer(data[:]))
+		if err != nil {
+			log.Println("Logic: failed to read challenge response:", err)
+			return
+		}
+		// response should be one higher than stored number
+		expected := number + 1
+		if response != expected {
+			log.Println("Logic: authentication failed for", address[:8], ": expected", expected, "got", response, "!")
+			return
+		}
+		// if valid, set peer to authenticated
+		log.Println("DEBUG:", address[:8], "authenticated itself correctly!")
+		peer, exists := c.tin.peers[address]
+		if !exists {
+			log.Println("Logic: peer lookup failed, doesn't exist!")
+			return
+		}
+		// set value
+		peer.SetAuthenticated(true)
+		return
+	}
 	// if not, simply reply
 }
 
@@ -156,7 +186,7 @@ func (c *chaninterface) onNotifyMessage(address string, nm shared.NotifyMessage)
 	}
 	// get peer id of sender
 	var peerID string
-	for _, peer := range c.tin.allPeers {
+	for _, peer := range c.tin.peers {
 		if peer.Address == address {
 			peerID = peer.Identification
 			break
@@ -353,11 +383,9 @@ func (c *chaninterface) buildKey(address string, identification string) string {
 Log function that respects the AllowLogging flag.
 */
 func (c *chaninterface) log(msg ...string) {
-	if c.AllowLogging {
-		toPrint := []string{"ChanInterface:"}
-		toPrint = append(toPrint, msg...)
-		log.Println(strings.Join(toPrint, " "))
-	}
+	toPrint := []string{"ChanInterface:"}
+	toPrint = append(toPrint, msg...)
+	log.Println(strings.Join(toPrint, " "))
 }
 
 /*
