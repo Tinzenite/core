@@ -59,7 +59,9 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 func (c *chaninterface) onAuthenticationMessage(address string, msg shared.AuthenticationMessage) {
 	// check if reply to sent challenge
 	if number, exists := c.challenges[address]; exists {
-		// if yes check if answer is valid
+		// whatever happens we remove the note that we've sent a challenge: if not valid we'll need to send a new one anyway
+		delete(c.challenges, address)
+		// now get the reply
 		data, err := c.tin.auth.Decrypt(msg.Encrypted, msg.Nonce)
 		if err != nil {
 			log.Println("Logic: failed to decrypt:", err)
@@ -85,9 +87,43 @@ func (c *chaninterface) onAuthenticationMessage(address string, msg shared.Authe
 		}
 		// set value
 		peer.SetAuthenticated(true)
+		// and done
 		return
 	}
-	// if not, simply reply
+	// if we didn't send a challenge, we just reply validly:
+	// read number
+	data, err := c.tin.auth.Decrypt(msg.Encrypted, msg.Nonce)
+	if err != nil {
+		log.Println("Logic: failed to decrypt:", err)
+		return
+	}
+	number, err := binary.ReadVarint(bytes.NewBuffer(data[:]))
+	if err != nil {
+		log.Println("Logic: failed to read challenge response:", err)
+		return
+	}
+	// apply operation
+	number++
+	// convert to data payload
+	data = make([]byte, binary.MaxVarintLen64)
+	_ = binary.PutVarint(data, number)
+	// get a nonce
+	nonce := c.tin.auth.createNonce()
+	// encrypt number with nonce
+	encrypted, err := c.tin.auth.Encrypt(data, nonce)
+	reply := shared.CreateAuthenticationMessage(encrypted, nonce)
+	// send reply
+	_ = c.tin.channel.Send(address, reply.JSON())
+	// set the other peer to trusted (since they could send a valid challenge)
+	log.Println("DEBUG:", address[:8], "sent correct challenge!")
+	peer, exists := c.tin.peers[address]
+	if !exists {
+		log.Println("Logic: peer lookup failed, doesn't exist!")
+		return
+	}
+	// set value
+	peer.SetAuthenticated(true)
+	// and done!
 }
 
 func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessage) {
