@@ -52,7 +52,7 @@ func CreateTinzenite(dirname, dirpath, peername, username, password string) (*Ti
 		failed = true
 		return nil, err
 	}
-	peer, err := shared.CreatePeer(peername, address, false)
+	peer, err := shared.CreatePeer(peername, address, true)
 	if err != nil {
 		failed = true
 		return nil, err

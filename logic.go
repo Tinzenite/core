@@ -54,6 +54,12 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 	return c.tin.channel.Send(address, rm.JSON())
 }
 
+func (c *chaninterface) onAuthenticationMessage(address string, msg shared.AuthenticationMessage) {
+	// if we receive a challenge we must check whether we sent the challenge
+	// if yes check answer
+	// if not, simply reply
+}
+
 func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessage) {
 	// this means we need to send our selfpeer (used for bootstrapping)
 	if msg.ObjType == shared.OtPeer {

@@ -224,6 +224,8 @@ func (t *Tinzenite) applyPeers() error {
 	for _, peer := range peers {
 		// tox will return an error if the address has already been added, so we just ignore it
 		_ = t.channel.AcceptConnection(peer.Address)
+		// TODO if encrypted don't even try auth
+		// otherwise send challenge
 	}
 	// TODO check initialized and online, start authentication FIXME
 	// finally apply

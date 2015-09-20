@@ -228,6 +228,14 @@ func (c *chaninterface) OnMessage(address, message string) {
 				return
 			}
 			c.onNotifyMessage(address, *msg)
+		case shared.MsgChallenge:
+			msg := &shared.AuthenticationMessage{}
+			err := json.Unmarshal([]byte(message), msg)
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
+			c.onAuthenticationMessage(address, *msg)
 		default:
 			c.warn("Unknown object received:", msgType.String())
 		}
