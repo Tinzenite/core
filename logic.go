@@ -40,7 +40,7 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 			tran.updated = time.Now()
 			c.inTransfers[key] = tran
 			// retransmit
-			return c.tin.channel.Send(address, rm.JSON())
+			return c.tin.send(address, rm.JSON())
 		}
 		c.log("Ignoring multiple request for", rm.Identification)
 		return nil
@@ -53,9 +53,14 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 	c.inTransfers[key] = tran
 	/*TODO send request to only one underutilized peer at once*/
 	// FOR NOW: just get it from whomever send the update
-	return c.tin.channel.Send(address, rm.JSON())
+	return c.tin.send(address, rm.JSON())
 }
 
+/*
+onAuthenticationMessage handles the reception of an AuthenticationMessage.
+NOTE: this should be the only method that is allowed to send messages to
+UNAUTHENTICATED peers! FIXME
+*/
 func (c *chaninterface) onAuthenticationMessage(address string, msg shared.AuthenticationMessage) {
 	// check if reply to sent challenge
 	if number, exists := c.challenges[address]; exists {
@@ -144,7 +149,7 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 			return
 		}
 		um := shared.CreateUpdateMessage(shared.OpCreate, *obj)
-		c.tin.channel.Send(address, um.JSON())
+		c.tin.send(address, um.JSON())
 		return
 	}
 	// get obj for path and directory
@@ -353,7 +358,7 @@ func (c *chaninterface) handleMessage(address string, msg *shared.UpdateMessage)
 	// if other side hasn't completed removal --> notify that we're done with it
 	if err == model.ErrObjectRemovalDone {
 		nm := shared.CreateNotifyMessage(shared.OpRemove, msg.Object.Name)
-		c.tin.channel.Send(address, nm.JSON())
+		c.tin.send(address, nm.JSON())
 		// done
 		return nil
 	}

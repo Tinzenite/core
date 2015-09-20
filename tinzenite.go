@@ -1,9 +1,13 @@
 package core
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
+	"math/big"
 	"os"
 	"sync"
 	"time"
@@ -220,25 +224,89 @@ func (t *Tinzenite) applyPeers() error {
 	if err != nil {
 		return err
 	}
-	// make sure they are all tox ready
-	for _, peer := range peers {
-		// tox will return an error if the address has already been added, so we just ignore it
-		_ = t.channel.AcceptConnection(peer.Address)
-		// TODO if encrypted don't even try auth
-		// otherwise send challenge
-	}
-	// TODO check initialized and online, start authentication FIXME
-	// finally apply
+	// apply to object
 	t.peers = peers
+	// make sure they are all tox ready
+	for peerAddress, peer := range peers {
+		// ignore self peer
+		if peerAddress == t.selfpeer.Address {
+			continue
+		}
+		// tox will return an error if the address has already been added, so we just ignore it
+		_ = t.channel.AcceptConnection(peerAddress)
+		// if not online no need to continue
+		if online, _ := t.channel.IsAddressOnline(peerAddress); !online {
+			continue
+		}
+		// if encrypted don't even try auth
+		if !peer.Trusted {
+			log.Println("DEBUG: not challenging untrusted peer!")
+			continue
+		}
+		if peer.IsAuthenticated() {
+			log.Println("DEBUG: not challenging already authenticated peer!")
+			continue
+		}
+		// if peer challenge has already been issued we don't send a new one
+		if number, exists := t.cInterface.challenges[peerAddress]; exists {
+			// TODO retry after longish timeout
+			log.Println("DEBUG: challenge already sent, won't resend!", number)
+			continue
+		}
+		// TODO building and reading challenge can be methodized, look into that!
+		// otherwise build challenge
+		bigNumber, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64-1))
+		if err != nil {
+			log.Println("Tinzenite: failed to create challenge:", err)
+			// retry later on
+			continue
+		}
+		// convert back to int64
+		number := bigNumber.Int64()
+		// convert to data payload
+		data := make([]byte, binary.MaxVarintLen64)
+		_ = binary.PutVarint(data, number)
+		// get a nonce
+		nonce := t.auth.createNonce()
+		// encrypt number with nonce
+		encrypted, err := t.auth.Encrypt(data, nonce)
+		if err != nil {
+			log.Println("Tinzenite: failed to encrypt:", err)
+			// retry later on
+			continue
+		}
+		challenge := shared.CreateAuthenticationMessage(encrypted, nonce)
+		// remember the challenge we sent
+		t.cInterface.challenges[peerAddress] = number
+		// send reply
+		_ = t.channel.Send(peerAddress, challenge.JSON())
+	}
 	return nil
 }
 
 /*
-Send the given message to the peer with the address if online.
+Send the given message to the peer with the address if online. Wraps the full
+featured channel.Send to ensure that no messages leak to unauthenticated peers.
 */
 func (t *Tinzenite) send(address, msg string) error {
+	// TODO check if authenticated and ENFORCE! FIXME
+	// for now just warn if sending a secure message to unauthenticated peer
+	peer, exists := t.peers[address]
+	if exists {
+		if !peer.IsAuthenticated() {
+			log.Println("DEBUG: MESSAGE TO UNSECURE PEER!")
+			// TODO for now just silently ignore
+			return nil
+		}
+	} else {
+		// not sure when this would happen, but warn nonetheless
+		log.Println("DEBUG: warning, not a peer!")
+	}
 	return t.channel.Send(address, msg)
 }
+
+// TODO also do above for sendFile! FIXME
+// func (t *Tinzenite) sendFile(address, )
 
 /*
 Merge an update message to the local model.
@@ -369,7 +437,7 @@ func (t *Tinzenite) background() {
 					name += "/++"
 				}
 				log.Printf("Tin: sending <%s> of <.../%s> to %s.\n", msg.Operation, name, address[:8])
-				t.channel.Send(address, msg.JSON())
+				t.send(address, msg.JSON())
 			}
 		} // select
 	} // for
