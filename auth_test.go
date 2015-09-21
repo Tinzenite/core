@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
+	"io/ioutil"
 	"math"
 	"math/big"
 	"testing"
@@ -80,6 +81,25 @@ func Benchmark_CreateAuthentication(b *testing.B) {
 	}
 }
 
+func Benchmark_LoadAuthentication(b *testing.B) {
+	path, _ := ioutil.TempDir("", "auth_bench")
+	auth, err := createAuthentication("/path", "dirname", "username", "hunter2")
+	if err != nil {
+		b.Fatal("Creation failed:", err)
+	}
+	err = auth.StoreTo(path)
+	if err != nil {
+		b.Fatal("Store failed:", err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := loadAuthenticationFrom(path, "hunter2")
+		if err != nil {
+			b.Error("Failed to load:", err)
+		}
+	}
+}
+
 func Benchmark_Auth_Encrypt(b *testing.B) {
 	auth, err := createAuthentication("/path", "dirname", "username", "hunter2")
 	if err != nil {
@@ -93,6 +113,29 @@ func Benchmark_Auth_Encrypt(b *testing.B) {
 			b.Error("Failed to encrypt:", err)
 		}
 		_ = enc
+	}
+}
+
+func Benchmark_Auth_Decrypt(b *testing.B) {
+	auth, err := createAuthentication("/path", "dirname", "username", "hunter2")
+	if err != nil {
+		b.Fatal("Couldn't build auth:", err)
+	}
+	data := []byte("Add some random test here for now.")
+	nonce := auth.createNonce()
+	enc, err := auth.Encrypt(data, nonce)
+	if err != nil {
+		b.Fatal("Couldn't encrypt:", err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		clear, err := auth.Decrypt(enc, nonce)
+		if err != nil {
+			b.Error("Failed to decrypt:", err)
+		}
+		if 0 != bytes.Compare(clear, data) {
+			b.Error("Enc and dec are different!")
+		}
 	}
 }
 
