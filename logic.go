@@ -1,8 +1,6 @@
 package core
 
 import (
-	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
@@ -59,28 +57,23 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 /*
 onAuthenticationMessage handles the reception of an AuthenticationMessage.
 NOTE: this should be the only method that is allowed to send messages to
-UNAUTHENTICATED peers! FIXME
+UNAUTHENTICATED peers!
 */
 func (c *chaninterface) onAuthenticationMessage(address string, msg shared.AuthenticationMessage) {
+	// since we need this in either case, do it only once
+	receivedNumber, err := c.tin.auth.ReadAuthentication(&msg)
+	if err != nil {
+		log.Println("Logic: failed to read authentication:", err)
+		return
+	}
 	// check if reply to sent challenge
 	if number, exists := c.challenges[address]; exists {
 		// whatever happens we remove the note that we've sent a challenge: if not valid we'll need to send a new one anyway
 		delete(c.challenges, address)
-		// now get the reply
-		data, err := c.tin.auth.Decrypt(msg.Encrypted, msg.Nonce)
-		if err != nil {
-			log.Println("Logic: failed to decrypt:", err)
-			return
-		}
-		response, err := binary.ReadVarint(bytes.NewBuffer(data[:]))
-		if err != nil {
-			log.Println("Logic: failed to read challenge response:", err)
-			return
-		}
 		// response should be one higher than stored number
 		expected := number + 1
-		if response != expected {
-			log.Println("Logic: authentication failed for", address[:8], ": expected", expected, "got", response, "!")
+		if receivedNumber != expected {
+			log.Println("Logic: authentication failed for", address[:8], ": expected", expected, "got", receivedNumber, "!")
 			return
 		}
 		// if valid, set peer to authenticated
@@ -96,31 +89,13 @@ func (c *chaninterface) onAuthenticationMessage(address string, msg shared.Authe
 		return
 	}
 	// if we didn't send a challenge, we just reply validly:
-	// read number
-	data, err := c.tin.auth.Decrypt(msg.Encrypted, msg.Nonce)
+	receivedNumber++
+	// build reply
+	reply, err := c.tin.auth.BuildAuthentication(receivedNumber)
 	if err != nil {
-		log.Println("Logic: failed to decrypt:", err)
+		log.Println("Logic: failed to build response:", err)
 		return
 	}
-	number, err := binary.ReadVarint(bytes.NewBuffer(data[:]))
-	if err != nil {
-		log.Println("Logic: failed to read challenge response:", err)
-		return
-	}
-	// apply operation
-	number++
-	// convert to data payload
-	data = make([]byte, binary.MaxVarintLen64)
-	_ = binary.PutVarint(data, number)
-	// get a nonce
-	nonce := c.tin.auth.createNonce()
-	// encrypt number with nonce
-	encrypted, err := c.tin.auth.Encrypt(data, nonce)
-	if err != nil {
-		log.Println("Logic: failed to encrypt:", err)
-		return
-	}
-	reply := shared.CreateAuthenticationMessage(encrypted, nonce)
 	// send reply
 	_ = c.tin.channel.Send(address, reply.JSON())
 	// set the other peer to trusted (since they could send a valid challenge)

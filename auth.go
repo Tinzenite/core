@@ -1,7 +1,9 @@
 package core
 
 import (
+	"bytes"
 	rand "crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"hash/fnv"
 	"io/ioutil"
@@ -142,6 +144,42 @@ func (a *Authentication) Decrypt(encrypted []byte, nonce *[24]byte) ([]byte, err
 		return nil, errAuthDecryption
 	}
 	return data, nil
+}
+
+/*
+BuildAuthentication takes the given number and returns the valid
+AuthenticationMessage to send to the other side.
+*/
+func (a *Authentication) BuildAuthentication(number int64) (*shared.AuthenticationMessage, error) {
+	// convert to data payload
+	data := make([]byte, binary.MaxVarintLen64)
+	_ = binary.PutVarint(data, number)
+	// get a nonce
+	nonce := a.createNonce()
+	// encrypt number with nonce
+	encrypted, err := a.Encrypt(data, nonce)
+	if err != nil {
+		return nil, err
+	}
+	// write encrypted and nonce to message
+	msg := shared.CreateAuthenticationMessage(encrypted, nonce)
+	return &msg, nil
+}
+
+/*
+ReadAuthentication takes an AuthenticationMessage and decrypts it to return the
+contained number.
+*/
+func (a *Authentication) ReadAuthentication(msg *shared.AuthenticationMessage) (int64, error) {
+	data, err := a.Decrypt(msg.Encrypted, msg.Nonce)
+	if err != nil {
+		return 0, err
+	}
+	response, err := binary.ReadVarint(bytes.NewBuffer(data[:]))
+	if err != nil {
+		return 0, err
+	}
+	return response, nil
 }
 
 func (a *Authentication) loadCrypto(password string) error {

@@ -2,7 +2,6 @@ package core
 
 import (
 	"crypto/rand"
-	"encoding/binary"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -253,7 +252,6 @@ func (t *Tinzenite) applyPeers() error {
 			log.Println("DEBUG: challenge already sent, won't resend!", number)
 			continue
 		}
-		// TODO building and reading challenge can be methodized, look into that!
 		// otherwise build challenge
 		bigNumber, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt64-1))
 		if err != nil {
@@ -263,19 +261,12 @@ func (t *Tinzenite) applyPeers() error {
 		}
 		// convert back to int64
 		number := bigNumber.Int64()
-		// convert to data payload
-		data := make([]byte, binary.MaxVarintLen64)
-		_ = binary.PutVarint(data, number)
-		// get a nonce
-		nonce := t.auth.createNonce()
-		// encrypt number with nonce
-		encrypted, err := t.auth.Encrypt(data, nonce)
+		// build message
+		challenge, err := t.auth.BuildAuthentication(number)
 		if err != nil {
-			log.Println("Tinzenite: failed to encrypt:", err)
-			// retry later on
+			log.Println("Tinzenite: failed to build message:", err)
 			continue
 		}
-		challenge := shared.CreateAuthenticationMessage(encrypted, nonce)
 		// remember the challenge we sent
 		t.cInterface.challenges[peerAddress] = number
 		// send reply
