@@ -216,17 +216,11 @@ func (t *Tinzenite) DisconnectPeer(peerName string) {
 }
 
 /*
-applyPeers loads all peers and readies the communication channel accordingly.
+checkPeerAuth TODO
 */
-func (t *Tinzenite) applyPeers() error {
-	peers, err := shared.LoadPeers(t.Path)
-	if err != nil {
-		return err
-	}
-	// apply to object
-	t.peers = peers
+func (t *Tinzenite) checkPeerAuth() error {
 	// make sure they are all tox ready
-	for peerAddress, peer := range peers {
+	for peerAddress, peer := range t.peers {
 		// ignore self peer
 		if peerAddress == t.selfpeer.Address {
 			continue
@@ -242,10 +236,11 @@ func (t *Tinzenite) applyPeers() error {
 			log.Println("DEBUG: not challenging untrusted peer!")
 			continue
 		}
+		// if already authenticated nothing to do here
 		if peer.IsAuthenticated() {
-			log.Println("DEBUG: not challenging already authenticated peer!")
 			continue
 		}
+		log.Println("DEBUG: SENDING")
 		// if peer challenge has already been issued we don't send a new one
 		if number, exists := t.cInterface.challenges[peerAddress]; exists {
 			// TODO retry after longish timeout
@@ -269,9 +264,34 @@ func (t *Tinzenite) applyPeers() error {
 		}
 		// remember the challenge we sent
 		t.cInterface.challenges[peerAddress] = number
-		// send reply
+		// send challenge
 		_ = t.channel.Send(peerAddress, challenge.JSON())
 	}
+	return nil
+}
+
+/*
+checkPeers TODO
+*/
+func (t *Tinzenite) checkPeers() error {
+	// load peers from disk
+	loadedPeers, err := shared.LoadPeers(t.Path)
+	if err != nil {
+		return err
+	}
+	// for all peers see if we already know of them
+	for address, peer := range loadedPeers {
+		// if peer exists we check next one. Changes to the peer files will only
+		// be used on a tinzenite restart (although for now nothing should ever change!)
+		if _, exists := t.peers[address]; exists {
+			continue
+		}
+		// otherwise add peer to t.peers
+		t.peers[address] = peer
+		// notify that new peer has been added to this instance
+		log.Println("Tinzenite: new peer detected:", address[:8])
+	}
+	// TODO what about REMOVED peers? See Remove method above ^^
 	return nil
 }
 
@@ -285,8 +305,7 @@ func (t *Tinzenite) send(address, msg string) error {
 	peer, exists := t.peers[address]
 	if exists {
 		if !peer.IsAuthenticated() {
-			log.Println("DEBUG: MESSAGE TO UNSECURE PEER!")
-			// TODO for now just silently ignore
+			// silently ignore
 			return nil
 		}
 	} else {
@@ -392,10 +411,16 @@ func (t *Tinzenite) background() {
 			t.wg.Done()
 			return
 		case <-peerTicker:
+			// TODO: we don't need to check for peers all that often (ideally only via callback if we see a new one was created)
 			// update peers
-			err := t.applyPeers()
+			err := t.checkPeers()
 			if err != nil {
-				log.Println("Tin: error applying peers:", err)
+				log.Println("Tin: error checking for new peers:", err)
+			}
+			// check peer authentication
+			err = t.checkPeerAuth()
+			if err != nil {
+				log.Println("Tin: error checking authority of peers:", err)
 			}
 		case <-transferTicker:
 			currentTransfers := t.channel.ActiveTransfers()

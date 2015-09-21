@@ -68,6 +68,7 @@ func (c *chaninterface) onAuthenticationMessage(address string, msg shared.Authe
 	}
 	// check if reply to sent challenge
 	if number, exists := c.challenges[address]; exists {
+		log.Println("DEBUG: CHECKING REPLY")
 		// whatever happens we remove the note that we've sent a challenge: if not valid we'll need to send a new one anyway
 		delete(c.challenges, address)
 		// response should be one higher than stored number
@@ -77,18 +78,18 @@ func (c *chaninterface) onAuthenticationMessage(address string, msg shared.Authe
 			return
 		}
 		// if valid, set peer to authenticated
-		log.Println("DEBUG:", address[:8], "authenticated itself correctly!")
-		peer, exists := c.tin.peers[address]
+		_, exists := c.tin.peers[address]
 		if !exists {
 			log.Println("Logic: peer lookup failed, doesn't exist!")
 			return
 		}
 		// set value
-		peer.SetAuthenticated(true)
+		c.tin.peers[address].SetAuthenticated(true)
 		// and done
 		return
 	}
 	// if we didn't send a challenge, we just reply validly:
+	log.Println("DEBUG: REPLYING")
 	receivedNumber++
 	// build reply
 	reply, err := c.tin.auth.BuildAuthentication(receivedNumber)
@@ -99,14 +100,13 @@ func (c *chaninterface) onAuthenticationMessage(address string, msg shared.Authe
 	// send reply
 	_ = c.tin.channel.Send(address, reply.JSON())
 	// set the other peer to trusted (since they could send a valid challenge)
-	log.Println("DEBUG:", address[:8], "sent correct challenge!")
-	peer, exists := c.tin.peers[address]
+	_, exists := c.tin.peers[address]
 	if !exists {
 		log.Println("Logic: peer lookup failed, doesn't exist!")
 		return
 	}
 	// set value
-	peer.SetAuthenticated(true)
+	c.tin.peers[address].SetAuthenticated(true)
 	// and done!
 }
 
