@@ -4,13 +4,10 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
-	"log"
 	"math"
 	"math/big"
 	"testing"
 )
-
-// TODO: implement benchmarking functions because encryption is slow...
 
 func Test_Authentication(t *testing.T) {
 	auth := Authentication{}
@@ -26,11 +23,6 @@ func Test_Authentication(t *testing.T) {
 	}
 	if !sameKeys(auth.public, twoAuth.public) || !sameKeys(auth.private, twoAuth.private) {
 		t.Error("Expected keys to match!")
-		log.Println(auth.public)
-		log.Println(twoAuth.public)
-		log.Println("---------------------------------------------------")
-		log.Println(auth.private)
-		log.Println(twoAuth.private)
 	}
 }
 
@@ -50,12 +42,11 @@ func Test_Challenge(t *testing.T) {
 	}
 	// convert back to int64
 	number := bigNumber.Int64()
-	log.Println("DEBUG: challenge:", number)
 	// convert to data payload
 	// NOTE: BAD DOC! binary.Size(number) does not return the correct number! Instead we use the maximum length to guarantee that the value will always fit...
 	data := make([]byte, binary.MaxVarintLen64)
-	written := binary.PutVarint(data, number)
-	log.Println("GOLANG DEBUG: Size says we need", binary.Size(number), "bytes, but actually wrote", written, "!")
+	_ = binary.PutVarint(data, number)
+	// log.Println("GOLANG DEBUG: Size says we need", binary.Size(number), "bytes, but actually wrote", written, "!")
 	// get a nonce
 	nonce := auth.createNonce()
 	// encrypt number with nonce
@@ -64,7 +55,6 @@ func Test_Challenge(t *testing.T) {
 		t.Fatal("Expected no errors:", err)
 	}
 	// <-> ANSWER CHALLENGE <->
-	log.Println("DEBUG: ENCRYPTED:", encrypted)
 	// decrypt
 	decrypted, err := auth.Decrypt(encrypted, nonce)
 	if err != nil {
@@ -75,7 +65,46 @@ func Test_Challenge(t *testing.T) {
 	if err != nil {
 		t.Fatal("Expected no errors:", err)
 	}
-	log.Println("DEBUG: read:", readNumber)
+	if readNumber != number {
+		t.Error("Expected numbers to match, got", readNumber, "instead of", number)
+	}
+}
+
+func Benchmark_CreateAuthentication(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		auth, err := createAuthentication("/path", "dirname", "username", "hunter2")
+		if err != nil {
+			b.Error("Error:", err)
+		}
+		_ = auth
+	}
+}
+
+func Benchmark_Auth_Encrypt(b *testing.B) {
+	auth, err := createAuthentication("/path", "dirname", "username", "hunter2")
+	if err != nil {
+		b.Fatal("Couldn't build auth:", err)
+	}
+	nonce := auth.createNonce()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		enc, err := auth.Encrypt([]byte("Add some random test here for now."), nonce)
+		if err != nil {
+			b.Error("Failed to encrypt:", err)
+		}
+		_ = enc
+	}
+}
+
+func Benchmark_Auth_CreateNonce(b *testing.B) {
+	auth, err := createAuthentication("/path", "dirname", "username", "hunter2")
+	if err != nil {
+		b.Fatal("Couldn't build auth:", err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = auth.createNonce()
+	}
 }
 
 func sameKeys(a *[32]byte, b *[32]byte) bool {
