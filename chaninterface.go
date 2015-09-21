@@ -144,15 +144,17 @@ func (c *chaninterface) OnFriendRequest(address, message string) {
 	peer := &shared.Peer{}
 	err := json.Unmarshal([]byte(message), peer)
 	if err != nil {
+		// FIXME this should result in an error
 		// this may happen for debug purposes etc
 		peer = nil
-		trusted = false
-		c.log("Received non JSON message:", message)
-	} else {
+		// TODO this is for debugging reasons: if non-peer conection attempt handle as trusted peer
 		trusted = true
+		log.Println("DEBUG: allowing non peer add of peer!")
+	} else {
+		// set trust value to what the other side WANTS to be
+		trusted = peer.Trusted
 	}
 	// check if allowed
-	/*TODO peer.trusted should be used to ensure that all is okay. For now all are trusted by default until encryption is implemented.*/
 	if !c.tin.peerValidation(address, trusted) {
 		c.log("Refusing connection.")
 		return
@@ -165,7 +167,6 @@ func (c *chaninterface) OnFriendRequest(address, message string) {
 	}
 	if peer == nil {
 		// TODO remove this and fix it
-		log.Println("DEBUG: adding fake peer to enable full communication test")
 		peer, _ = shared.CreatePeer(message, address, true)
 		/*
 			c.warn("No legal peer information could be read! Peer will be considered passive.")
