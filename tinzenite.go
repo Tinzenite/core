@@ -2,6 +2,7 @@ package core
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -216,6 +217,32 @@ func (t *Tinzenite) DisconnectPeer(peerName string) {
 		newPeers[peer.Address] = peer
 	}
 	t.peers = newPeers
+}
+
+/*
+AllowPeer should be called if a connection request is to be accepted after the
+user has verified it. NOTE: friend requests should be replied to ASAP, since
+they are NOT persistantly stored!
+*/
+func (t *Tinzenite) AllowPeer(address string) error {
+	// do we know of a connection attempt for said address?
+	peer, exists := t.cInterface.connections[address]
+	if !exists {
+		return errors.New("unknown friend request")
+	}
+	// if yes, add connection
+	err := t.channel.AcceptConnection(address)
+	if err != nil {
+		return err
+	}
+	// remove memory
+	delete(t.cInterface.connections, address)
+	// ensure that address is correct by overwritting sent address with real one
+	peer.Address = address
+	// add peer to local list
+	t.peers[address] = peer
+	// try store new peer to disk
+	return t.Store()
 }
 
 /*

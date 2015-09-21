@@ -16,13 +16,14 @@ chaninterface implements the channel.Callbacks interface so that Tinzenite doesn
 export them unnecessarily.
 */
 type chaninterface struct {
-	tin          *Tinzenite          // reference back to Tinzenite
-	inTransfers  map[string]transfer // map of in transfers, referenced by the object id
-	outTransfers map[string]bool     // map of out transfers, referenced by the object id
-	active       map[string]bool     // stores running transfers
-	challenges   map[string]int64    // store of SENT challenges. key is address, value is sent number
-	recpath      string              // shortcut to receiving dir
-	temppath     string              // shortcut to temp dir
+	tin          *Tinzenite              // reference back to Tinzenite
+	inTransfers  map[string]transfer     // map of in transfers, referenced by the object id
+	outTransfers map[string]bool         // map of out transfers, referenced by the object id
+	active       map[string]bool         // stores running transfers
+	challenges   map[string]int64        // store of SENT challenges. key is address, value is sent number
+	connections  map[string]*shared.Peer // stores friend requests until they are accepted / denied
+	recpath      string                  // shortcut to receiving dir
+	temppath     string                  // shortcut to temp dir
 }
 
 func createChannelInterface(t *Tinzenite) *chaninterface {
@@ -32,6 +33,7 @@ func createChannelInterface(t *Tinzenite) *chaninterface {
 		outTransfers: make(map[string]bool),
 		active:       make(map[string]bool),
 		challenges:   make(map[string]int64),
+		connections:  make(map[string]*shared.Peer),
 		recpath:      t.Path + "/" + shared.TINZENITEDIR + "/" + shared.RECEIVINGDIR,
 		temppath:     t.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR}
 }
@@ -138,47 +140,19 @@ func (c *chaninterface) OnFriendRequest(address, message string) {
 		c.warn("PeerValidation() callback is unimplemented, can not connect!")
 		return
 	}
-	// trusted peer flag
-	var trusted bool
 	// try to read peer from message
 	peer := &shared.Peer{}
 	err := json.Unmarshal([]byte(message), peer)
 	if err != nil {
-		// FIXME this should result in an error
-		// this may happen for debug purposes etc
-		peer = nil
 		// TODO this is for debugging reasons: if non-peer conection attempt handle as trusted peer
-		trusted = true
-		log.Println("DEBUG: allowing non peer add of peer!")
-	} else {
-		// set trust value to what the other side WANTS to be
-		trusted = peer.Trusted
-	}
-	// check if allowed
-	if !c.tin.peerValidation(address, trusted) {
-		c.log("Refusing connection.")
-		return
-	}
-	// if yes, add connection
-	err = c.tin.channel.AcceptConnection(address)
-	if err != nil {
-		c.log("Channel:", err.Error())
-		return
-	}
-	if peer == nil {
-		// TODO remove this and fix it
+		// FIXME this should result in an error
 		peer, _ = shared.CreatePeer(message, address, true)
-		/*
-			c.warn("No legal peer information could be read! Peer will be considered passive.")
-			return
-		*/
+		log.Println("DEBUG: allowing non peer add of peer!")
 	}
-	// ensure that address is correct by overwritting sent address with real one
-	peer.Address = address
-	// add peer to local list
-	c.tin.peers[address] = peer
-	// try store new peer to disk
-	_ = c.tin.Store()
+	// remember friend request
+	c.connections[address] = peer
+	// notify of incomming friend request (note that we do this async to not block this thread!)
+	go c.tin.peerValidation(address, peer.Trusted)
 }
 
 /*
