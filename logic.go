@@ -68,7 +68,6 @@ func (c *chaninterface) onAuthenticationMessage(address string, msg shared.Authe
 	}
 	// check if reply to sent challenge
 	if number, exists := c.challenges[address]; exists {
-		log.Println("DEBUG: CHECKING REPLY")
 		// whatever happens we remove the note that we've sent a challenge: if not valid we'll need to send a new one anyway
 		delete(c.challenges, address)
 		// response should be one higher than stored number
@@ -89,7 +88,6 @@ func (c *chaninterface) onAuthenticationMessage(address string, msg shared.Authe
 		return
 	}
 	// if we didn't send a challenge, we just reply validly:
-	log.Println("DEBUG: REPLYING")
 	receivedNumber++
 	// build reply
 	reply, err := c.tin.auth.BuildAuthentication(receivedNumber)

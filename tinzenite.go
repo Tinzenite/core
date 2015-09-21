@@ -49,12 +49,17 @@ func (t *Tinzenite) SyncRemote() error {
 	if err != nil {
 		return err
 	}
-	// FIXME should iterate over peers instead
-	online, err := t.channel.OnlineAddresses()
-	if err != nil {
-		return err
-	}
-	for _, address := range online {
+	// request model from all trusted, authenticated peers
+	for address, peer := range t.peers {
+		// this only works for trusted peers
+		if !peer.Trusted {
+			continue
+		}
+		// peer should be online
+		if online, _ := t.channel.IsAddressOnline(address); !online {
+			continue
+		}
+		// ask for model
 		t.cInterface.syncModel(address)
 	}
 	return nil
@@ -241,7 +246,6 @@ func (t *Tinzenite) checkPeerAuth() error {
 		if peer.IsAuthenticated() {
 			continue
 		}
-		log.Println("DEBUG: SENDING")
 		// if peer challenge has already been issued we don't send a new one
 		if number, exists := t.cInterface.challenges[peerAddress]; exists {
 			// TODO retry after longish timeout
