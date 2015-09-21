@@ -55,7 +55,7 @@ func (t *Tinzenite) SyncRemote() error {
 		return err
 	}
 	for _, address := range online {
-		t.cInterface.SyncModel(address)
+		t.cInterface.syncModel(address)
 	}
 	return nil
 }
@@ -216,7 +216,8 @@ func (t *Tinzenite) DisconnectPeer(peerName string) {
 }
 
 /*
-checkPeerAuth TODO
+checkPeerAuth runs through all known peers and ensures that trusted ones are
+authenticated.
 */
 func (t *Tinzenite) checkPeerAuth() error {
 	// make sure they are all tox ready
@@ -271,7 +272,7 @@ func (t *Tinzenite) checkPeerAuth() error {
 }
 
 /*
-checkPeers TODO
+checkPeers checks whether the loaded peers are in sync with the peers on disk.
 */
 func (t *Tinzenite) checkPeers() error {
 	// load peers from disk
@@ -291,32 +292,35 @@ func (t *Tinzenite) checkPeers() error {
 		// notify that new peer has been added to this instance
 		log.Println("Tinzenite: new peer detected:", address[:8])
 	}
-	// TODO what about REMOVED peers? See Remove method above ^^
+	// TODO what about REMOVED peers? See DisconnectPeer method above ^^
 	return nil
 }
 
 /*
-Send the given message to the peer with the address if online. Wraps the full
-featured channel.Send to ensure that no messages leak to unauthenticated peers.
+isPeerTrusted checks whether the address is:
+ - a valid peer
+ - an encrypted peer (will return false but without error)
+ - has been authenticted (will return true)
+ NOTE: errors are thrown if no peer can be found for the address OR if the peer
+ is trusted but has not yet been authenticated.
 */
-func (t *Tinzenite) send(address, msg string) error {
-	// TODO check if authenticated and ENFORCE! FIXME
-	// for now just warn if sending a secure message to unauthenticated peer
+func (t *Tinzenite) isPeerTrusted(address string) (bool, error) {
 	peer, exists := t.peers[address]
-	if exists {
-		if !peer.IsAuthenticated() {
-			// silently ignore
-			return nil
-		}
-	} else {
-		// not sure when this would happen, but warn nonetheless
-		log.Println("DEBUG: warning, not a peer!")
+	// error if unknown address
+	if !exists {
+		return false, errPeerUnknown
 	}
-	return t.channel.Send(address, msg)
+	// if peer is not trusted, return false
+	if !peer.Trusted {
+		return false, nil
+	}
+	// check if already authenticated
+	if !peer.IsAuthenticated() {
+		return false, errPeerUnauthenticated
+	}
+	// otherwise peer is trusted and ready to go
+	return true, nil
 }
-
-// TODO also do above for sendFile! FIXME
-// func (t *Tinzenite) sendFile(address, )
 
 /*
 Merge an update message to the local model.
@@ -442,19 +446,25 @@ func (t *Tinzenite) background() {
 			if t.muteFlag {
 				continue
 			}
-			online, err := t.channel.OnlineAddresses()
-			if err != nil {
-				log.Println("Background:", err)
+			// we only have to do this once for all logs
+			name := msg.Object.Name
+			// for better visibility add special mark to signify directory
+			if msg.Object.Directory {
+				name += "/++"
 			}
-			for _, address := range online {
-				name := msg.Object.Name
-				// for better visibility add special mark to signify directory
-				if msg.Object.Directory {
-					name += "/++"
+			// send to all authenticated, online peers
+			for address, peer := range t.peers {
+				// don't send to peers that can't do something with it --> only trusted, authenticated peers
+				if !peer.IsAuthenticated() {
+					continue
+				}
+				// no need to try to send something if offline
+				if online, _ := t.channel.IsAddressOnline(address); !online {
+					continue
 				}
 				log.Printf("Tin: sending <%s> of <.../%s> to %s.\n", msg.Operation, name, address[:8])
-				t.send(address, msg.JSON())
-			}
+				t.channel.Send(address, msg.JSON())
+			} // for
 		} // select
 	} // for
 }

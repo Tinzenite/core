@@ -17,7 +17,7 @@ import (
 /*
 SyncModel fetches and synchronizes a remote model.
 */
-func (c *chaninterface) SyncModel(address string) {
+func (c *chaninterface) syncModel(address string) {
 	// create & modify must first fetch file
 	rm := shared.CreateRequestMessage(shared.OtModel, shared.IDMODEL)
 	// request file and apply update on success
@@ -38,7 +38,7 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 			tran.updated = time.Now()
 			c.inTransfers[key] = tran
 			// retransmit
-			return c.tin.send(address, rm.JSON())
+			return c.tin.channel.Send(address, rm.JSON())
 		}
 		c.log("Ignoring multiple request for", rm.Identification)
 		return nil
@@ -51,7 +51,7 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 	c.inTransfers[key] = tran
 	/*TODO send request to only one underutilized peer at once*/
 	// FOR NOW: just get it from whomever send the update
-	return c.tin.send(address, rm.JSON())
+	return c.tin.channel.Send(address, rm.JSON())
 }
 
 /*
@@ -124,7 +124,7 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 			return
 		}
 		um := shared.CreateUpdateMessage(shared.OpCreate, *obj)
-		c.tin.send(address, um.JSON())
+		c.tin.channel.Send(address, um.JSON())
 		return
 	}
 	// get obj for path and directory
@@ -333,7 +333,7 @@ func (c *chaninterface) handleMessage(address string, msg *shared.UpdateMessage)
 	// if other side hasn't completed removal --> notify that we're done with it
 	if err == model.ErrObjectRemovalDone {
 		nm := shared.CreateNotifyMessage(shared.OpRemove, msg.Object.Name)
-		c.tin.send(address, nm.JSON())
+		c.tin.channel.Send(address, nm.JSON())
 		// done
 		return nil
 	}

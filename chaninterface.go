@@ -196,6 +196,30 @@ func (c *chaninterface) OnMessage(address, message string) {
 	v := &shared.Message{}
 	err := json.Unmarshal([]byte(message), v)
 	if err == nil {
+		// special case for AuthenticationMessage
+		if v.Type == shared.MsgChallenge {
+			msg := &shared.AuthenticationMessage{}
+			err := json.Unmarshal([]byte(message), msg)
+			if err != nil {
+				log.Println(err.Error())
+				return
+			}
+			c.onAuthenticationMessage(address, *msg)
+			// and done
+			return
+		}
+		// all others are only allowed if authenticated
+		trusted, err := c.tin.isPeerTrusted(address)
+		if err != nil {
+			c.log("OnMessage:", err.Error())
+			return
+		}
+		// TODO differentiate between encrypted and trusted behaviour
+		if !trusted {
+			log.Println("TODO: implement for untrusted peers!")
+			return
+		}
+		// switch behaviour for trusted messages
 		switch msgType := v.Type; msgType {
 		case shared.MsgUpdate:
 			msg := &shared.UpdateMessage{}
@@ -231,14 +255,6 @@ func (c *chaninterface) OnMessage(address, message string) {
 				return
 			}
 			c.onNotifyMessage(address, *msg)
-		case shared.MsgChallenge:
-			msg := &shared.AuthenticationMessage{}
-			err := json.Unmarshal([]byte(message), msg)
-			if err != nil {
-				log.Println(err.Error())
-				return
-			}
-			c.onAuthenticationMessage(address, *msg)
 		default:
 			c.warn("Unknown object received:", msgType.String())
 		}

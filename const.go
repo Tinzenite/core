@@ -28,4 +28,6 @@ var (
 	errAuthInvalidKeys     = errors.New("keys are invalid")
 	errAuthInvalidSecure   = errors.New("secure is invalid")
 	errAuthInvalidPassword = errors.New("password derived keys are incorrect")
+	errPeerUnknown         = errors.New("peer is unknown")
+	errPeerUnauthenticated = errors.New("peer is unauthenticated")
 )
