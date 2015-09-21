@@ -50,15 +50,13 @@ func (t *Tinzenite) SyncRemote() error {
 		return err
 	}
 	// request model from all trusted, authenticated peers
-	for address, peer := range t.peers {
-		// this only works for trusted peers
-		if !peer.Trusted {
+	for address := range t.peers {
+		trusted, err := t.isPeerTrusted(address)
+		// if unauthenticated or not trusted skip
+		if !trusted || err != nil {
 			continue
 		}
-		// peer should be online
-		if online, _ := t.channel.IsAddressOnline(address); !online {
-			continue
-		}
+		// note: a peer can only be authenticated if online, so no need to check that
 		// ask for model
 		t.cInterface.syncModel(address)
 	}
@@ -247,9 +245,8 @@ func (t *Tinzenite) checkPeerAuth() error {
 			continue
 		}
 		// if peer challenge has already been issued we don't send a new one
-		if number, exists := t.cInterface.challenges[peerAddress]; exists {
+		if _, exists := t.cInterface.challenges[peerAddress]; exists {
 			// TODO retry after longish timeout
-			log.Println("DEBUG: challenge already sent, won't resend!", number)
 			continue
 		}
 		// otherwise build challenge
