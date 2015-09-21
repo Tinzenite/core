@@ -150,6 +150,57 @@ func Benchmark_Auth_CreateNonce(b *testing.B) {
 	}
 }
 
+func Benchmark_Auth_ConvertPassword(b *testing.B) {
+	auth, err := createAuthentication("/path", "dirname", "username", "hunter2")
+	if err != nil {
+		b.Fatal("Couldn't build auth:", err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, err := auth.convertPassword("hunter2")
+		if err != nil {
+			b.Error("Failed to build passwords:", err)
+		}
+	}
+}
+
+func Benchmark_Auth_CreateCrypto(b *testing.B) {
+	auth, err := createAuthentication("/path", "dirname", "username", "hunter2")
+	if err != nil {
+		b.Fatal("Couldn't build auth:", err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		err := auth.createCrypto("hunter2")
+		if err != nil {
+			b.Error("Failed to create crypto:", err)
+		}
+	}
+}
+
+func Benchmark_Auth_LoadCrypto(b *testing.B) {
+	path, _ := ioutil.TempDir("", "auth_bench")
+	auth, err := createAuthentication("/path", "dirname", "username", "hunter2")
+	if err != nil {
+		b.Fatal("Creation failed:", err)
+	}
+	err = auth.StoreTo(path)
+	if err != nil {
+		b.Fatal("Store failed:", err)
+	}
+	auth, err = loadAuthenticationFrom(path, "hunter2")
+	if err != nil {
+		b.Fatal("Failed to reload:", err)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		err := auth.loadCrypto("hunter2")
+		if err != nil {
+			b.Error("Failed to load crypto:", err)
+		}
+	}
+}
+
 func sameKeys(a *[32]byte, b *[32]byte) bool {
 	for i := 0; i < 32; i++ {
 		if a[i] != b[i] {
