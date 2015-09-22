@@ -233,12 +233,15 @@ func (t *Tinzenite) AllowPeer(address string) error {
 	// if yes, add connection
 	err := t.channel.AcceptConnection(address)
 	if err != nil {
-		return err
+		// warn but don't return error: may be added later automatically
+		log.Println("Tinzenite: WARNING: failed to add address to channel:", err)
 	}
 	// remove memory
 	delete(t.cInterface.connections, address)
 	// ensure that address is correct by overwritting sent address with real one
 	peer.Address = address
+	// IF trusted peer (and accepting this peer verifies that choice), set to authorized immediately because bootstrap doesn't have auth
+	peer.SetAuthenticated(true)
 	// add peer to local list
 	t.peers[address] = peer
 	// try store new peer to disk
