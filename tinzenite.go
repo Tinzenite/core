@@ -65,6 +65,40 @@ func (t *Tinzenite) SyncRemote() error {
 }
 
 /*
+SyncEncrypted tries to lock available encrypted peers. If successful will update
+them to the current state while updating any outstanding issues.
+
+TODO FIXME maybe this should be included in sync remote. Although there is
+something to be said that it is the job of the client to handle this intelligently...
+*/
+func (t *Tinzenite) SyncEncrypted() error {
+	t.muteFlag = true
+	defer func() { t.muteFlag = false }()
+	// ensure local is up to date
+	err := t.SyncLocal()
+	if err != nil {
+		return err
+	}
+	// build lock message we'll use for all
+	lm := shared.CreateLockMessage(shared.LoRequest)
+	// try to lock all encrypted peers
+	for address := range t.peers {
+		trusted, err := t.isPeerTrusted(address)
+		// if authenticated or wrongly unauthenticated, ignore
+		if trusted || err != nil {
+			continue
+		}
+		// check if online
+		if online, _ := t.channel.IsAddressOnline(address); !online {
+			continue
+		}
+		// try to lock
+		t.channel.Send(address, lm.JSON())
+	}
+	return nil
+}
+
+/*
 SyncLocal changes. Will send updates to connected peers but not synchronize with
 other peers.
 */
