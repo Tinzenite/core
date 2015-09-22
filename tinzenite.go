@@ -55,11 +55,13 @@ func (t *Tinzenite) SyncRemote() error {
 		trusted, err := t.isPeerTrusted(address)
 		// if unauthenticated or not trusted skip
 		if !trusted || err != nil {
+			// this also skips if the peer is offline as offline peers are unauthenticated
 			continue
 		}
-		// note: a peer can only be authenticated if online, so no need to check that
-		// ask for model
-		t.cInterface.syncModel(address)
+		// create & modify must first fetch file
+		rm := shared.CreateRequestMessage(shared.OtModel, shared.IDMODEL)
+		// request file and apply update on success
+		t.cInterface.requestFile(address, rm, t.cInterface.onModelFileReceived)
 	}
 	return nil
 }

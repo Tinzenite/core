@@ -2,11 +2,14 @@ package core
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/tinzenite/channel"
+	"github.com/tinzenite/model"
 	"github.com/tinzenite/shared"
 )
 
@@ -206,6 +209,9 @@ func (c *chaninterface) OnMessage(address, message string) {
 	}
 }
 
+// ----------------------- NORMAL FUNCTIONS ------------------------------------
+// See also logic_*.go files for further functions
+
 /*
 onAuthenticationMessage handles the reception of an AuthenticationMessage.
 NOTE: this should be the only method that is allowed to send messages to
@@ -258,4 +264,163 @@ func (c *chaninterface) onAuthenticationMessage(address string, msg shared.Authe
 	// set value
 	c.tin.peers[address].SetAuthenticated(true)
 	// and done!
+}
+
+/*
+sendFile sends the given file to the address. Path is where the file lies,
+identification is what it will be named in transfer, and the function will be
+called once the send was successful.
+*/
+func (c *chaninterface) sendFile(address, path, identification string, f channel.OnDone) error {
+	// key for keeping track of running transfers
+	key := c.buildKey(address, identification)
+	// we must wrap the function, even if none was given because we'll need to remove the outTransfers
+	newFunction := func(success bool) {
+		delete(c.outTransfers, key)
+		// remember to call the callback
+		if f != nil {
+			f(success)
+		} else if !success {
+			// if no function was given still alert that send failed
+			log.Println("Transfer was not successful!", path)
+		}
+	}
+	// if it already exists, don't restart a new one!
+	_, exists := c.outTransfers[key]
+	if exists {
+		// receiving side must restart if it so wants to, we'll just keep sending the original one
+		return errors.New("out transfer already exists, will not resend")
+	}
+	// write that the transfer is happening
+	c.outTransfers[key] = true
+	// now call with overwritten function
+	return c.tin.channel.SendFile(address, path, identification, newFunction)
+}
+
+/*
+handleMessage looks at the message, fetches files if required, and correctly
+applies it to the model.
+*/
+func (c *chaninterface) handleMessage(address string, msg *shared.UpdateMessage) error {
+	// use check message to prepare message and check for special cases
+	msg, err := c.tin.model.CheckMessage(msg)
+	// if update known --> ignore it
+	if err == model.ErrIgnoreUpdate {
+		return nil
+	}
+	// if other side hasn't completed removal --> notify that we're done with it
+	if err == model.ErrObjectRemovalDone {
+		nm := shared.CreateNotifyMessage(shared.OpRemove, msg.Object.Name)
+		c.tin.channel.Send(address, nm.JSON())
+		// done
+		return nil
+	}
+	// if still error, return it
+	if err != nil {
+		return err
+	}
+	// --> IF CheckMessage was ok, we can now handle applying the message
+	// if a transfer was previously in progress, cancel it as we need the newer one
+	key := c.buildKey(address, msg.Object.Identification)
+	_, exists := c.inTransfers[key]
+	if exists {
+		path := c.recpath + "/" + address + "." + msg.Object.Identification
+		err := c.tin.channel.CancelFileTransfer(path)
+		// if canceling failed throw the error up
+		if err != nil {
+			return err
+		}
+		// remove transfer
+		delete(c.inTransfers, key)
+		// remove file if no error
+		_ = os.Remove(path)
+		// done with old one, so continue handling the new update
+	}
+	// apply directories directly
+	if msg.Object.Directory {
+		// no merge because it should never happen for directories
+		return c.tin.model.ApplyUpdateMessage(msg)
+	}
+	op := msg.Operation
+	// create and modify must first fetch the file
+	if op == shared.OpCreate || op == shared.OpModify {
+		c.remoteUpdate(address, *msg)
+		// errors may turn up but only when the file has been received, so done here
+		return nil
+	} else if op == shared.OpRemove {
+		// remove is without file transfer, so directly apply
+		return c.mergeUpdate(*msg)
+	}
+	c.warn("Unknown operation received, ignoring update message!")
+	return shared.ErrIllegalParameters
+}
+
+/*
+requestFile requests the given request from the address and executes the function
+when the transfer was successful or not. NOTE: only f may be nil.
+*/
+func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f onDone) error {
+	// build key
+	key := c.buildKey(address, rm.Identification)
+	if tran, exists := c.inTransfers[key]; exists {
+		if time.Since(tran.updated) > transferTimeout {
+			c.log("Retransmiting transfer due to timeout.")
+			// update
+			tran.updated = time.Now()
+			c.inTransfers[key] = tran
+			// retransmit
+			return c.tin.channel.Send(address, rm.JSON())
+		}
+		c.log("Ignoring multiple request for", rm.Identification)
+		return nil
+	}
+	// create new transfer
+	tran := transfer{
+		updated: time.Now(),
+		peers:   []string{address},
+		done:    f}
+	c.inTransfers[key] = tran
+	/*TODO send request to only one underutilized peer at once*/
+	// FOR NOW: just get it from whomever send the update
+	return c.tin.channel.Send(address, rm.JSON())
+}
+
+/*
+mergeUpdate does exactly that. First it tries to apply the update. If it fails
+with a merge a merge is done.
+*/
+func (c *chaninterface) mergeUpdate(msg shared.UpdateMessage) error {
+	// try to apply it straight
+	err := c.tin.model.ApplyUpdateMessage(&msg)
+	// if no error or not merge error, return err
+	if err != shared.ErrConflict {
+		return err
+	}
+	// if merge error --> merge
+	return c.tin.merge(&msg)
+}
+
+/*
+buildKey builds a unique string value for the given parameters.
+*/
+func (c *chaninterface) buildKey(address string, identification string) string {
+	return address + ":" + identification
+}
+
+/*
+Log function that respects the AllowLogging flag.
+*/
+func (c *chaninterface) log(msg ...string) {
+	toPrint := []string{"ChanInterface:"}
+	toPrint = append(toPrint, msg...)
+	log.Println(strings.Join(toPrint, " "))
+}
+
+/*
+Warn function.
+*/
+func (c *chaninterface) warn(msg ...string) {
+	toPrint := []string{"ChanInterface:", "WARNING:"}
+	toPrint = append(toPrint, msg...)
+	log.Println(strings.Join(toPrint, " "))
 }
