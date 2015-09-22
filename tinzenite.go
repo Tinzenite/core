@@ -142,7 +142,7 @@ the full model, so be sure to have called Update() to guarantee an up to date
 save.
 */
 func (t *Tinzenite) Store() error {
-	err := shared.MakeDotTinzenite(t.Path)
+	err := shared.MakeTinzeniteDir(t.Path)
 	if err != nil {
 		return err
 	}
