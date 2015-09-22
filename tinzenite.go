@@ -301,7 +301,6 @@ func (t *Tinzenite) checkPeerAuth() error {
 		}
 		// if encrypted don't even try auth
 		if !peer.Trusted {
-			log.Println("DEBUG: not challenging untrusted peer!")
 			continue
 		}
 		// if already authenticated nothing to do here
