@@ -55,57 +55,48 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 }
 
 /*
-onAuthenticationMessage handles the reception of an AuthenticationMessage.
-NOTE: this should be the only method that is allowed to send messages to
-UNAUTHENTICATED peers!
+onTrustedMessage is called for message from authenticated and trusted peers. Will
+redestribute the message according to its type.
 */
-func (c *chaninterface) onAuthenticationMessage(address string, msg shared.AuthenticationMessage) {
-	// since we need this in either case, do it only once
-	receivedNumber, err := c.tin.auth.ReadAuthentication(&msg)
-	if err != nil {
-		log.Println("Logic: failed to read authentication:", err)
-		return
-	}
-	// check if reply to sent challenge
-	if number, exists := c.challenges[address]; exists {
-		// whatever happens we remove the note that we've sent a challenge: if not valid we'll need to send a new one anyway
-		delete(c.challenges, address)
-		// response should be one higher than stored number
-		expected := number + 1
-		if receivedNumber != expected {
-			log.Println("Logic: authentication failed for", address[:8], ": expected", expected, "got", receivedNumber, "!")
+func (c *chaninterface) onTrustedMessage(address string, msgType shared.MsgType, message string) {
+	switch msgType {
+	case shared.MsgUpdate:
+		msg := &shared.UpdateMessage{}
+		err := json.Unmarshal([]byte(message), msg)
+		if err != nil {
+			log.Println(err.Error())
 			return
 		}
-		// if valid, set peer to authenticated
-		_, exists := c.tin.peers[address]
-		if !exists {
-			log.Println("Logic: peer lookup failed, doesn't exist!")
+		// handle the message and show log if error
+		err = c.handleMessage(address, msg)
+		if err != nil {
+			c.log("handleMessage failed with:", err.Error())
+		}
+	case shared.MsgRequest:
+		// read request message
+		msg := &shared.RequestMessage{}
+		err := json.Unmarshal([]byte(message), msg)
+		if err != nil {
+			log.Println(err.Error())
 			return
 		}
-		// set value
-		c.tin.peers[address].SetAuthenticated(true)
-		// and done
-		return
+		if msg.ObjType == shared.OtModel {
+			// c.log("Received model message!")
+			c.onRequestModelMessage(address, *msg)
+		} else {
+			c.onRequestMessage(address, *msg)
+		}
+	case shared.MsgNotify:
+		msg := &shared.NotifyMessage{}
+		err := json.Unmarshal([]byte(message), msg)
+		if err != nil {
+			log.Println(err.Error())
+			return
+		}
+		c.onNotifyMessage(address, *msg)
+	default:
+		c.warn("Unknown object received:", msgType.String())
 	}
-	// if we didn't send a challenge, we just reply validly:
-	receivedNumber++
-	// build reply
-	reply, err := c.tin.auth.BuildAuthentication(receivedNumber)
-	if err != nil {
-		log.Println("Logic: failed to build response:", err)
-		return
-	}
-	// send reply
-	_ = c.tin.channel.Send(address, reply.JSON())
-	// set the other peer to trusted (since they could send a valid challenge)
-	_, exists := c.tin.peers[address]
-	if !exists {
-		log.Println("Logic: peer lookup failed, doesn't exist!")
-		return
-	}
-	// set value
-	c.tin.peers[address].SetAuthenticated(true)
-	// and done!
 }
 
 func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessage) {

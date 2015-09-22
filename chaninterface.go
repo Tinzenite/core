@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"log"
 	"os"
@@ -160,7 +159,6 @@ OnConnected is called whenever a peer comes online. Starts authentication proces
 */
 func (c *chaninterface) OnConnected(address string) {
 	c.log(address[:8], "came online!")
-	/*TODO implement authentication! Also in Bootstrap...*/
 }
 
 /*
@@ -189,68 +187,75 @@ func (c *chaninterface) OnMessage(address, message string) {
 			c.log("OnMessage:", err.Error())
 			return
 		}
-		// TODO differentiate between encrypted and trusted behaviour
+		// differentiate between encrypted and trusted behaviour
 		if !trusted {
-			log.Println("TODO: implement for untrusted peers!")
-			return
+			c.onEncryptedMessage(address, v.Type, message)
+		} else {
+			// handle a trusted message
+			c.onTrustedMessage(address, v.Type, message)
 		}
-		// switch behaviour for trusted messages
-		switch msgType := v.Type; msgType {
-		case shared.MsgUpdate:
-			msg := &shared.UpdateMessage{}
-			err := json.Unmarshal([]byte(message), msg)
-			if err != nil {
-				log.Println(err.Error())
-				return
-			}
-			// handle the message and show log if error
-			err = c.handleMessage(address, msg)
-			if err != nil {
-				c.log("handleMessage failed with:", err.Error())
-			}
-		case shared.MsgRequest:
-			// read request message
-			msg := &shared.RequestMessage{}
-			err := json.Unmarshal([]byte(message), msg)
-			if err != nil {
-				log.Println(err.Error())
-				return
-			}
-			if msg.ObjType == shared.OtModel {
-				// c.log("Received model message!")
-				c.onRequestModelMessage(address, *msg)
-			} else {
-				c.onRequestMessage(address, *msg)
-			}
-		case shared.MsgNotify:
-			msg := &shared.NotifyMessage{}
-			err := json.Unmarshal([]byte(message), msg)
-			if err != nil {
-				log.Println(err.Error())
-				return
-			}
-			c.onNotifyMessage(address, *msg)
-		default:
-			c.warn("Unknown object received:", msgType.String())
-		}
-		// If it was JSON, we're done if we can't do anything with it
+		// return when done as the message has been worked
 		return
 	}
 	// if unmarshal didn't work check for plain commands:
 	switch message {
-	case "auth":
-		// build and sent valid auth
-		data := make([]byte, binary.MaxVarintLen64)
-		_ = binary.PutVarint(data, int64(42))
-		// get a nonce
-		nonce := c.tin.auth.createNonce()
-		// encrypt number with nonce
-		encrypted, _ := c.tin.auth.Encrypt(data, nonce)
-		reply := shared.CreateAuthenticationMessage(encrypted, nonce)
-		c.tin.channel.Send(address, reply.JSON())
 	default:
 		// NOTE: Currently none implemented
 		c.log("Received", message)
 		c.tin.channel.Send(address, "ACK")
 	}
+}
+
+/*
+onAuthenticationMessage handles the reception of an AuthenticationMessage.
+NOTE: this should be the only method that is allowed to send messages to
+UNAUTHENTICATED peers!
+*/
+func (c *chaninterface) onAuthenticationMessage(address string, msg shared.AuthenticationMessage) {
+	// since we need this in either case, do it only once
+	receivedNumber, err := c.tin.auth.ReadAuthentication(&msg)
+	if err != nil {
+		log.Println("Logic: failed to read authentication:", err)
+		return
+	}
+	// check if reply to sent challenge
+	if number, exists := c.challenges[address]; exists {
+		// whatever happens we remove the note that we've sent a challenge: if not valid we'll need to send a new one anyway
+		delete(c.challenges, address)
+		// response should be one higher than stored number
+		expected := number + 1
+		if receivedNumber != expected {
+			log.Println("Logic: authentication failed for", address[:8], ": expected", expected, "got", receivedNumber, "!")
+			return
+		}
+		// if valid, set peer to authenticated
+		_, exists := c.tin.peers[address]
+		if !exists {
+			log.Println("Logic: peer lookup failed, doesn't exist!")
+			return
+		}
+		// set value
+		c.tin.peers[address].SetAuthenticated(true)
+		// and done
+		return
+	}
+	// if we didn't send a challenge, we just reply validly:
+	receivedNumber++
+	// build reply
+	reply, err := c.tin.auth.BuildAuthentication(receivedNumber)
+	if err != nil {
+		log.Println("Logic: failed to build response:", err)
+		return
+	}
+	// send reply
+	_ = c.tin.channel.Send(address, reply.JSON())
+	// set the other peer to trusted (since they could send a valid challenge)
+	_, exists := c.tin.peers[address]
+	if !exists {
+		log.Println("Logic: peer lookup failed, doesn't exist!")
+		return
+	}
+	// set value
+	c.tin.peers[address].SetAuthenticated(true)
+	// and done!
 }
