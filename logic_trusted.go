@@ -37,9 +37,9 @@ func (c *chaninterface) onTrustedMessage(address string, msgType shared.MsgType,
 		}
 		if msg.ObjType == shared.OtModel {
 			// c.log("Received model message!")
-			c.onRequestModelMessage(address, *msg)
+			c.onTrustedRequestModelMessage(address, *msg)
 		} else {
-			c.onRequestMessage(address, *msg)
+			c.onTrustedRequestMessage(address, *msg)
 		}
 	case shared.MsgNotify:
 		msg := &shared.NotifyMessage{}
@@ -48,13 +48,13 @@ func (c *chaninterface) onTrustedMessage(address string, msgType shared.MsgType,
 			log.Println(err.Error())
 			return
 		}
-		c.onNotifyMessage(address, *msg)
+		c.onTrustedNotifyMessage(address, *msg)
 	default:
 		c.warn("Unknown object received:", msgType.String())
 	}
 }
 
-func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessage) {
+func (c *chaninterface) onTrustedRequestMessage(address string, msg shared.RequestMessage) {
 	// this means we need to send our selfpeer (used for bootstrapping)
 	if msg.ObjType == shared.OtPeer {
 		// TODO check if this is really still in use?
@@ -90,7 +90,7 @@ func (c *chaninterface) onRequestMessage(address string, msg shared.RequestMessa
 	}
 }
 
-func (c *chaninterface) onRequestModelMessage(address string, msg shared.RequestMessage) {
+func (c *chaninterface) onTrustedRequestModelMessage(address string, msg shared.RequestMessage) {
 	// quietly update model
 	c.tin.muteFlag = true
 	defer func() { c.tin.muteFlag = false }()
@@ -136,7 +136,7 @@ func (c *chaninterface) onRequestModelMessage(address string, msg shared.Request
 /*
 onNotifyMessage is called when a NotifyMessage is received.
 */
-func (c *chaninterface) onNotifyMessage(address string, nm shared.NotifyMessage) {
+func (c *chaninterface) onTrustedNotifyMessage(address string, nm shared.NotifyMessage) {
 	// for now we're only interested in remove notifications
 	if nm.Notify != shared.NoRemoved {
 		c.warn("Notify for non-Remove operations not yet supported, ignoring!")
@@ -166,39 +166,10 @@ func (c *chaninterface) onNotifyMessage(address string, nm shared.NotifyMessage)
 }
 
 /*
-remoteUpdate is a conveniance wrapper that fetches a file from the address for
-the given update and then applies it.
-*/
-func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
-	// sanity check
-	if msg.Operation == shared.OpRemove || msg.Object.Directory {
-		c.warn("remoteUpdate called with remove or with directory, ignoring!")
-		return
-	}
-	// create & modify must first fetch file
-	rm := shared.CreateRequestMessage(shared.OtObject, msg.Object.Identification)
-	// request file and apply update on success
-	c.requestFile(address, rm, func(address, path string) {
-		// rename to correct name for model
-		err := os.Rename(path, c.temppath+"/"+rm.Identification)
-		if err != nil {
-			c.log("Failed to move file to temp: " + err.Error())
-			return
-		}
-		// apply
-		err = c.mergeUpdate(msg)
-		if err != nil {
-			c.log("File application error: " + err.Error())
-		}
-		// done
-	})
-}
-
-/*
 onModelFileReceived is called whenever a normal model sync is supposed to be
 applied.
 */
-func (c *chaninterface) onModelFileReceived(address, path string) {
+func (c *chaninterface) onTrustedModelFileReceived(address, path string) {
 	// read model file and remove it
 	data, err := ioutil.ReadFile(path)
 	if err != nil {

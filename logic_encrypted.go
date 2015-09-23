@@ -23,13 +23,21 @@ func (c *chaninterface) onEncryptedMessage(address string, msgType shared.MsgTyp
 			log.Println(err.Error())
 			return
 		}
-		c.onLockMessage(address, *msg)
+		c.onEncLockMessage(address, *msg)
+	case shared.MsgNotify:
+		msg := &shared.NotifyMessage{}
+		err := json.Unmarshal([]byte(message), msg)
+		if err != nil {
+			log.Println(err.Error())
+			return
+		}
+		c.onEncNotifyMessage(address, *msg)
 	default:
 		c.warn("Unknown object received:", msgType.String())
 	}
 }
 
-func (c *chaninterface) onLockMessage(address string, msg shared.LockMessage) {
+func (c *chaninterface) onEncLockMessage(address string, msg shared.LockMessage) {
 	switch msg.Action {
 	case shared.LoAccept:
 		// if LOCKED request model file to begin sync
@@ -37,5 +45,16 @@ func (c *chaninterface) onLockMessage(address string, msg shared.LockMessage) {
 		c.tin.channel.Send(address, rm.JSON())
 	default:
 		c.warn("Unknown lock action received:", msg.Action.String())
+	}
+}
+
+func (c *chaninterface) onEncNotifyMessage(address string, msg shared.NotifyMessage) {
+	switch msg.Notify {
+	case shared.NoMissing:
+		// if model --> create it
+		// if object --> error... maybe "reset" the encrypted peer?
+		log.Println("DEBUG: something missing!", msg.Notify)
+	default:
+		c.warn("Unknown notify type received:", msg.Notify.String())
 	}
 }

@@ -61,7 +61,7 @@ func (t *Tinzenite) SyncRemote() error {
 		// create & modify must first fetch file
 		rm := shared.CreateRequestMessage(shared.OtModel, shared.IDMODEL)
 		// request file and apply update on success
-		t.cInterface.requestFile(address, rm, t.cInterface.onModelFileReceived)
+		t.cInterface.requestFile(address, rm, t.cInterface.onTrustedModelFileReceived)
 	}
 	return nil
 }
