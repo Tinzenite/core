@@ -51,9 +51,15 @@ func (c *chaninterface) onEncLockMessage(address string, msg shared.LockMessage)
 func (c *chaninterface) onEncNotifyMessage(address string, msg shared.NotifyMessage) {
 	switch msg.Notify {
 	case shared.NoMissing:
+		// remove transfer as no file will come
+		delete(c.inTransfers, c.buildKey(address, msg.Identification))
 		// if model --> create it
+		if msg.Identification == shared.IDMODEL {
+			log.Println("DEBUG: model is empty, skip directly to uploading!")
+			return
+		}
 		// if object --> error... maybe "reset" the encrypted peer?
-		log.Println("DEBUG: something missing!", msg.Notify)
+		log.Println("DEBUG: something missing!", msg.Identification, msg.Notify)
 	default:
 		c.warn("Unknown notify type received:", msg.Notify.String())
 	}
