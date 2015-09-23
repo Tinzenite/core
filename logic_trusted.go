@@ -138,7 +138,7 @@ onNotifyMessage is called when a NotifyMessage is received.
 */
 func (c *chaninterface) onNotifyMessage(address string, nm shared.NotifyMessage) {
 	// for now we're only interested in remove notifications
-	if nm.Operation != shared.OpRemove {
+	if nm.Notify != shared.NoRemoved {
 		c.warn("Notify for non-Remove operations not yet supported, ignoring!")
 		return
 	}
