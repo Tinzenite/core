@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"time"
 
 	"github.com/tinzenite/shared"
 )
@@ -106,6 +107,9 @@ func (c *chaninterface) encSend(address, identification, path string, ot shared.
 	_ = c.tin.channel.Send(address, pm.JSON())
 	// TODO encrypt here? The time it takes serves as a time pause for allowing enc to handle the push message...
 	log.Println("TODO: where do we encrypt?")
+	// FIXME ugh... this happens too fast, so wait:
+	// Maybe send ALL the push messages first, then start sending files?
+	<-time.After(1 * time.Second)
 	// send file
 	_ = c.tin.channel.SendFile(address, path, identification, func(success bool) {
 		if !success {
