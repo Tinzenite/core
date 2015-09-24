@@ -102,10 +102,10 @@ encSend handles uploading a file to the encrypted peer.
 */
 func (c *chaninterface) encSend(address, identification, path string, ot shared.ObjectType) {
 	pm := shared.CreatePushMessage(identification, ot)
-	// TODO encrypt here?
-	log.Println("TODO: where do we encrypt?")
 	// send push notify
 	_ = c.tin.channel.Send(address, pm.JSON())
+	// TODO encrypt here? The time it takes serves as a time pause for allowing enc to handle the push message...
+	log.Println("TODO: where do we encrypt?")
 	// send file
 	_ = c.tin.channel.SendFile(address, path, identification, func(success bool) {
 		if !success {

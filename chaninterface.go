@@ -161,10 +161,25 @@ func (c *chaninterface) OnFriendRequest(address, message string) {
 }
 
 /*
-OnConnected is called whenever a peer comes online. Starts authentication process.
+OnConnected is called whenever a peer comes online. Resets authentication
+process if applicable to clean existing authentication from previous connects.
 */
 func (c *chaninterface) OnConnected(address string) {
 	c.log(address[:8], "came online!")
+	// we must only reset this if peer is trusted
+	trusted, _ := c.tin.isPeerTrusted(address)
+	if !trusted {
+		return
+	}
+	// check if we can validly access it
+	_, exists := c.tin.peers[address]
+	if !exists {
+		c.warn("Peer not found, can not reset authorization!")
+		return
+	}
+	// otherwise fetch and set auth to false
+	c.log("Resetting authorization for trusted peer.")
+	c.tin.peers[address].SetAuthenticated(false)
 }
 
 /*
@@ -205,6 +220,12 @@ func (c *chaninterface) OnMessage(address, message string) {
 	}
 	// if unmarshal didn't work check for plain commands:
 	switch message {
+	case "auth":
+		log.Println("DEBUG: authorizing!")
+		c.tin.peers[address].SetAuthenticated(true)
+	case "deauth":
+		log.Println("DEBUG: unauthorizing!")
+		c.tin.peers[address].SetAuthenticated(false)
 	default:
 		// NOTE: Currently none implemented
 		c.log("Received", message)
