@@ -155,6 +155,9 @@ func (c *chaninterface) OnFriendRequest(address, message string) {
 	c.connections[address] = peer
 	// notify of incomming friend request (note that we do this async to not block this thread!)
 	go c.tin.peerValidation(address, peer.Trusted)
+	// NOTE the above go call works because the entire channel stuff runs in a
+	// permament go routine – as long as it runs all child routines will be called! :D
+	// TODO make use of this within channel itself!
 }
 
 /*

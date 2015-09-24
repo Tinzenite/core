@@ -2,7 +2,9 @@ package core
 
 import (
 	"encoding/json"
+	"io/ioutil"
 	"log"
+	"os"
 
 	"github.com/tinzenite/shared"
 )
@@ -56,6 +58,10 @@ func (c *chaninterface) onEncNotifyMessage(address string, msg shared.NotifyMess
 		// if model --> create it
 		if msg.Identification == shared.IDMODEL {
 			log.Println("DEBUG: model is empty, skip directly to uploading!")
+			err := c.doFullUpload(address)
+			if err != nil {
+				log.Println("DEBUG: ERROR:", err)
+			}
 			return
 		}
 		// if object --> error... maybe "reset" the encrypted peer?
@@ -63,4 +69,53 @@ func (c *chaninterface) onEncNotifyMessage(address string, msg shared.NotifyMess
 	default:
 		c.warn("Unknown notify type received:", msg.Notify.String())
 	}
+}
+
+func (c *chaninterface) doFullUpload(address string) error {
+	// write model to file
+	model, err := ioutil.ReadFile(c.tin.Path + "/" + shared.STOREMODELDIR + "/" + shared.MODELJSON)
+	if err != nil {
+		return err
+	}
+	/*
+		// TODO what nonce do we use? where do we put it?
+		log.Println("DEBUG: WARNING: always using the same nonce for now, fix this!")
+		// TODO write nonce PER FILE, append to encrypted data
+		model, err = c.tin.auth.Encrypt(model, c.tin.auth.Nonce)
+		if err != nil {
+			return err
+		}
+	*/
+	// write to temp file
+	sendPath := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.SENDINGDIR + "/" + shared.IDMODEL
+	err = ioutil.WriteFile(sendPath, model, shared.FILEPERMISSIONMODE)
+	if err != nil {
+		return err
+	}
+	// send model
+	c.encSend(address, shared.IDMODEL, sendPath, shared.OtModel)
+	return nil
+}
+
+/*
+encSend handles uploading a file to the encrypted peer.
+*/
+func (c *chaninterface) encSend(address, identification, path string, ot shared.ObjectType) {
+	pm := shared.CreatePushMessage(identification, ot)
+	// TODO encrypt here?
+	log.Println("TODO: where do we encrypt?")
+	// send push notify
+	_ = c.tin.channel.Send(address, pm.JSON())
+	// send file
+	_ = c.tin.channel.SendFile(address, path, identification, func(success bool) {
+		if !success {
+			c.log("Failed to upload file!", ot.String(), identification)
+		}
+		// remove sending temp file always
+		err := os.Remove(path)
+		if err != nil {
+			c.warn("Failed to remove sending file!", err.Error())
+		}
+	})
+	// done
 }
