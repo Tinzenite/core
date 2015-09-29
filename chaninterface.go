@@ -157,7 +157,6 @@ func (c *chaninterface) OnFriendRequest(address, message string) {
 	go c.tin.peerValidation(address, peer.Trusted)
 	// NOTE the above go call works because the entire channel stuff runs in a
 	// permament go routine – as long as it runs all child routines will be called! :D
-	// TODO make use of this within channel itself!
 }
 
 /*
@@ -202,7 +201,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 			// and done
 			return
 		}
-		// all others are only allowed if authenticated
+		// all others are only allowed depending on auth status
 		trusted, err := c.tin.isPeerTrusted(address)
 		if err != nil {
 			c.log("OnMessage:", err.Error())

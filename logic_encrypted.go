@@ -35,6 +35,14 @@ func (c *chaninterface) onEncryptedMessage(address string, msgType shared.MsgTyp
 			return
 		}
 		c.onEncNotifyMessage(address, *msg)
+	case shared.MsgRequest:
+		msg := &shared.RequestMessage{}
+		err := json.Unmarshal([]byte(message), msg)
+		if err != nil {
+			log.Println(err.Error())
+			return
+		}
+		c.onEncRequestMessage(address, *msg)
 	default:
 		c.warn("Unknown object received:", msgType.String())
 	}
@@ -72,6 +80,36 @@ func (c *chaninterface) onEncNotifyMessage(address string, msg shared.NotifyMess
 	}
 }
 
+func (c *chaninterface) onEncRequestMessage(address string, msg shared.RequestMessage) {
+	// if not peer request --> warn
+	if msg.ObjType != shared.OtPeer {
+		c.warn("RequestMessage other than for peers received, ignoring!")
+		return
+	}
+	// build paths we need
+	relPath := shared.CreatePathRoot(c.tin.Path)
+	peerPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR
+	// read all peers from peer dir
+	peerStats, err := ioutil.ReadDir(c.tin.Path + "/" + peerPath)
+	if err != nil {
+		c.warn("Failed to read peer directory:", err.Error())
+		return
+	}
+	for _, stat := range peerStats {
+		// retrieve identification
+		identification, err := c.tin.model.GetIdentification(relPath.Apply(peerPath + "/" + stat.Name()))
+		if err != nil {
+			c.warn("Failed to retrieve identification for", stat.Name(), "so skipping!")
+			continue
+		}
+		// send push message for each one
+		pm := shared.CreatePushMessage(identification, stat.Name(), shared.OtPeer)
+		c.tin.channel.Send(address, pm.JSON())
+	}
+	// and now send the files
+	log.Println("DEBUG: TODO: send peer files now!")
+}
+
 func (c *chaninterface) doFullUpload(address string) error {
 	// write model to file
 	model, err := ioutil.ReadFile(c.tin.Path + "/" + shared.STOREMODELDIR + "/" + shared.MODELJSON)
@@ -102,7 +140,8 @@ func (c *chaninterface) doFullUpload(address string) error {
 encSend handles uploading a file to the encrypted peer.
 */
 func (c *chaninterface) encSend(address, identification, path string, ot shared.ObjectType) {
-	pm := shared.CreatePushMessage(identification, ot)
+	// TODO empty name means we don't care --> write this down somewhere and implement
+	pm := shared.CreatePushMessage(identification, "", ot)
 	// send push notify
 	_ = c.tin.channel.Send(address, pm.JSON())
 	// TODO encrypt here? The time it takes serves as a time pause for allowing enc to handle the push message...
