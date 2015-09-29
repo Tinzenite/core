@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/tinzenite/shared"
@@ -88,26 +89,40 @@ func (c *chaninterface) onEncRequestMessage(address string, msg shared.RequestMe
 	}
 	// build paths we need
 	relPath := shared.CreatePathRoot(c.tin.Path)
-	peerPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR
+	dirPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR
 	// read all peers from peer dir
-	peerStats, err := ioutil.ReadDir(c.tin.Path + "/" + peerPath)
+	peerStats, err := ioutil.ReadDir(c.tin.Path + "/" + dirPath)
 	if err != nil {
 		c.warn("Failed to read peer directory:", err.Error())
 		return
 	}
+	wg := sync.WaitGroup{}
 	for _, stat := range peerStats {
-		// retrieve identification
-		identification, err := c.tin.model.GetIdentification(relPath.Apply(peerPath + "/" + stat.Name()))
-		if err != nil {
-			c.warn("Failed to retrieve identification for", stat.Name(), "so skipping!")
-			continue
-		}
-		// send push message for each one
-		pm := shared.CreatePushMessage(identification, stat.Name(), shared.OtPeer)
-		c.tin.channel.Send(address, pm.JSON())
+		wg.Add(1)
+		// async for all peers because of sleep
+		go func(fileName string) {
+			// in any case signal done
+			defer func() { wg.Done() }()
+			// note: because apply no need to prepend the root path
+			peerPath := relPath.Apply(dirPath + "/" + fileName)
+			// retrieve identification
+			identification, err := c.tin.model.GetIdentification(peerPath)
+			if err != nil {
+				c.warn("Failed to retrieve identification for", fileName, "so skipping!")
+				return
+			}
+			// send push message for each one
+			pm := shared.CreatePushMessage(identification, fileName, shared.OtPeer)
+			c.tin.channel.Send(address, pm.JSON())
+			// sleep for a second because the receiver must first be allowed to progress the pm
+			time.Sleep(1 * time.Second)
+			// and now send the file
+			c.tin.channel.SendFile(address, peerPath.FullPath(), identification, nil)
+		}(stat.Name())
 	}
-	// and now send the files
-	log.Println("DEBUG: TODO: send peer files now!")
+	// wait for all peers to have been sent OR timeout
+	wg.Done()
+	// TODO timeout
 }
 
 func (c *chaninterface) doFullUpload(address string) error {
