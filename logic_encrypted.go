@@ -121,7 +121,7 @@ func (c *chaninterface) onEncRequestMessage(address string, msg shared.RequestMe
 		}(stat.Name())
 	}
 	// wait for all peers to have been sent OR timeout
-	wg.Done()
+	wg.Wait()
 	// TODO timeout
 }
 
