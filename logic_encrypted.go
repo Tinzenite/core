@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/tinzenite/shared"
@@ -96,33 +95,35 @@ func (c *chaninterface) onEncRequestMessage(address string, msg shared.RequestMe
 		c.warn("Failed to read peer directory:", err.Error())
 		return
 	}
-	wg := sync.WaitGroup{}
+	// TODO this needs to be rewritten to be better.
 	for _, stat := range peerStats {
-		wg.Add(1)
-		// async for all peers because of sleep
-		go func(fileName string) {
-			// in any case signal done
-			defer func() { wg.Done() }()
-			// note: because apply no need to prepend the root path
-			peerPath := relPath.Apply(dirPath + "/" + fileName)
-			// retrieve identification
-			identification, err := c.tin.model.GetIdentification(peerPath)
-			if err != nil {
-				c.warn("Failed to retrieve identification for", fileName, "so skipping!")
-				return
-			}
-			// send push message for each one
-			pm := shared.CreatePushMessage(identification, fileName, shared.OtPeer)
-			c.tin.channel.Send(address, pm.JSON())
-			// sleep for a second because the receiver must first be allowed to progress the pm
-			time.Sleep(1 * time.Second)
-			// and now send the file
-			c.tin.channel.SendFile(address, peerPath.FullPath(), identification, nil)
-		}(stat.Name())
+		fileName := stat.Name()
+		// note: because apply no need to prepend the root path
+		peerPath := relPath.Apply(dirPath + "/" + fileName)
+		// retrieve identification
+		identification, err := c.tin.model.GetIdentification(peerPath)
+		if err != nil {
+			c.warn("Failed to retrieve identification for", fileName, "so skipping!")
+			continue
+		}
+		// send push message for each one
+		pm := shared.CreatePushMessage(identification, fileName, shared.OtPeer)
+		c.tin.channel.Send(address, pm.JSON())
 	}
-	// wait for all peers to have been sent OR timeout
-	wg.Wait()
-	// TODO timeout
+	// once all of the push messages have been sent, wait a moment, then send the files
+	time.Sleep(1 * time.Second)
+	// then send the files
+	for _, stat := range peerStats {
+		fileName := stat.Name()
+		peerPath := relPath.Apply(dirPath + "/" + fileName)
+		identification, err := c.tin.model.GetIdentification(peerPath)
+		if err != nil {
+			c.warn("Failed to retrieve identification for", fileName, "!")
+			// return here because this means that the bootstrapper has error
+			return
+		}
+		c.tin.channel.SendFile(address, peerPath.FullPath(), identification, nil)
+	}
 }
 
 func (c *chaninterface) doFullUpload(address string) error {
