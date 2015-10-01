@@ -263,21 +263,21 @@ func (c *chaninterface) encModelReceived(address, path string) {
 	}
 	// when completely done, start uploading current state
 	log.Println("DEBUG: now upload my current state to encrypted!")
+	return // FIXME remove when continuing!
 	// TODO make this work NOTE the following is just a TEST!!! FIXME
 	// model AFTER applying enc updates
 	newModel, err := c.tin.model.Read()
-	log.Println("DEBUG: read newModel")
 	if err != nil {
 		log.Println("retrieve error:", err)
 		return
 	}
-	encModel := model.Model{}
-	log.Println("DEBUG: created new model")
-	encModel.Bootstrap(foreignModel)
+	// TODO build a model from foreignModel, requires new model.method! FIXME NOTE CONTINUE HERE TAMINO!
+	encModel := model.Model{} // HERE HERE HERE
+	log.Println("TAMINO TODO DEBUG: implement a model.build method which builds a model from read output!")
+	// NOW get the differences
 	encUpdateList, err := encModel.Sync(newModel)
-	log.Println("DEBUG: synced encrypted with newModel state")
 	if err != nil {
-		log.Println("sync error", err)
+		log.Println("sync error:", err)
 		return
 	}
 	log.Println("DEBUG: need to send", len(encUpdateList), "updates to encrypted!")
