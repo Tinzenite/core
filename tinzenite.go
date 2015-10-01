@@ -84,7 +84,7 @@ func (t *Tinzenite) SyncEncrypted() error {
 	// build lock message we'll use for all
 	lm := shared.CreateLockMessage(shared.LoRequest)
 	// try to lock all encrypted peers
-	for address := range t.peers {
+	for address, peer := range t.peers {
 		trusted, err := t.isPeerTrusted(address)
 		// if authenticated or wrongly unauthenticated, ignore
 		if trusted || err != nil {
@@ -92,6 +92,11 @@ func (t *Tinzenite) SyncEncrypted() error {
 		}
 		// check if online
 		if online, _ := t.channel.IsAddressOnline(address); !online {
+			continue
+		}
+		// if already locked transfer is in progress, so ignore
+		if peer.IsLocked() {
+			log.Println("DEBUG: peer already locked, skipping this time!")
 			continue
 		}
 		// try to lock

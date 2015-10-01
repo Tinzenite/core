@@ -44,6 +44,13 @@ func (c *chaninterface) onEncryptedMessage(address string, msgType shared.MsgTyp
 func (c *chaninterface) onEncLockMessage(address string, msg shared.LockMessage) {
 	switch msg.Action {
 	case shared.LoAccept:
+		// remember that this peer is locked
+		_, exists := c.tin.peers[address]
+		if !exists {
+			c.warn("Can not set peer to locked as peer doesn't exist!")
+			return
+		}
+		c.tin.peers[address].SetLocked(true)
 		// if LOCKED request model file to begin sync
 		rm := shared.CreateRequestMessage(shared.OtModel, shared.IDMODEL)
 		c.tin.channel.Send(address, rm.JSON())
@@ -82,7 +89,10 @@ func (c *chaninterface) doFullUpload(address string) {
 	// send model
 	modelPath := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.LOCALDIR + "/" + shared.MODELJSON
 	go c.encSend(address, shared.IDMODEL, modelPath, shared.OtModel)
-	// now, send every file
+	// for peers and auth file we require different objectTypes, so catch
+	peerPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR
+	authPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.AUTHJSON
+	// now, send every file based on the tracked objects in the model
 	for path, stin := range c.tin.model.StaticInfos {
 		// if directory, skip
 		if stin.Directory {
@@ -90,9 +100,6 @@ func (c *chaninterface) doFullUpload(address string) {
 		}
 		// default object type is OtObject
 		objectType := shared.OtObject
-		// for peers and auth file we require different objectTypes, so catch
-		peerPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR
-		authPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.AUTHJSON
 		// and set if path matches
 		if strings.HasPrefix(path, peerPath) {
 			objectType = shared.OtPeer
@@ -113,7 +120,7 @@ will copy all its data to SENDINGDIR, encrypt it there, and then send it.
 */
 func (c *chaninterface) encSend(address, identification, path string, ot shared.ObjectType) {
 	// first send the push message so that it can be received while we work on preparing the file
-	pm := shared.CreatePushMessage(identification, "", ot)
+	pm := shared.CreatePushMessage(identification, ot)
 	// send push notify
 	err := c.tin.channel.Send(address, pm.JSON())
 	if err != nil {
@@ -127,7 +134,7 @@ func (c *chaninterface) encSend(address, identification, path string, ot shared.
 		return
 	}
 	// TODO encrypt here? The time it takes serves as a time pause for allowing enc to handle the push message...
-	log.Println("DEBUG: encrypt here, and once done, send if time since timeout is larger!")
+	// log.Println("DEBUG: encrypt here, and once done, send if time since timeout is larger!")
 	// write to temp file
 	sendPath := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.SENDINGDIR + "/" + identification
 	err = ioutil.WriteFile(sendPath, data, shared.FILEPERMISSIONMODE)
@@ -137,7 +144,7 @@ func (c *chaninterface) encSend(address, identification, path string, ot shared.
 	}
 	<-time.After(1 * time.Second)
 	// send file
-	_ = c.tin.channel.SendFile(address, sendPath, identification, func(success bool) {
+	err = c.tin.channel.SendFile(address, sendPath, identification, func(success bool) {
 		if !success {
 			c.log("Failed to upload file!", ot.String(), identification)
 		}
@@ -147,6 +154,9 @@ func (c *chaninterface) encSend(address, identification, path string, ot shared.
 			c.warn("Failed to remove sending file!", err.Error())
 		}
 	})
+	if err != nil {
+		c.warn("Failed to send file:", err.Error())
+		return
+	}
 	// done
-	log.Println("DEBUG: done sending", identification)
 }
