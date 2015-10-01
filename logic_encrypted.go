@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/tinzenite/shared"
@@ -51,6 +52,9 @@ func (c *chaninterface) onEncLockMessage(address string, msg shared.LockMessage)
 	}
 }
 
+/*
+onEncNotifyMessage handles the reception of notification messages.
+*/
 func (c *chaninterface) onEncNotifyMessage(address string, msg shared.NotifyMessage) {
 	switch msg.Notify {
 	case shared.NoMissing:
@@ -58,11 +62,9 @@ func (c *chaninterface) onEncNotifyMessage(address string, msg shared.NotifyMess
 		delete(c.inTransfers, c.buildKey(address, msg.Identification))
 		// if model --> create it
 		if msg.Identification == shared.IDMODEL {
-			log.Println("DEBUG: model is empty, skip directly to uploading!")
-			err := c.doFullUpload(address)
-			if err != nil {
-				log.Println("DEBUG: ERROR:", err)
-			}
+			// log that encrypted was empty and that we'll just upload our current state
+			c.log("Encrypted is empty, nothing to merge, uploading directly.")
+			c.doFullUpload(address)
 			return
 		}
 		// if object --> error... maybe "reset" the encrypted peer?
@@ -72,54 +74,79 @@ func (c *chaninterface) onEncNotifyMessage(address string, msg shared.NotifyMess
 	}
 }
 
-func (c *chaninterface) doFullUpload(address string) error {
-	// write model to file
-	model, err := ioutil.ReadFile(c.tin.Path + "/" + shared.STOREMODELDIR + "/" + shared.MODELJSON)
-	if err != nil {
-		return err
-	}
-	/*
-		// TODO what nonce do we use? where do we put it?
-		log.Println("DEBUG: WARNING: always using the same nonce for now, fix this!")
-		// TODO write nonce PER FILE, append to encrypted data
-		model, err = c.tin.auth.Encrypt(model, c.tin.auth.Nonce)
-		if err != nil {
-			return err
-		}
-	*/
-	// write to temp file
-	sendPath := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.SENDINGDIR + "/" + shared.IDMODEL
-	err = ioutil.WriteFile(sendPath, model, shared.FILEPERMISSIONMODE)
-	if err != nil {
-		return err
-	}
+/*
+doFullUpload uploads the current directory state to the encrypted peer. FIXME:
+unlocks the encrypted peer once done.
+*/
+func (c *chaninterface) doFullUpload(address string) {
 	// send model
-	c.encSend(address, shared.IDMODEL, sendPath, shared.OtModel)
-	return nil
+	modelPath := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.LOCALDIR + "/" + shared.MODELJSON
+	go c.encSend(address, shared.IDMODEL, modelPath, shared.OtModel)
+	// now, send every file
+	for path, stin := range c.tin.model.StaticInfos {
+		// if directory, skip
+		if stin.Directory {
+			continue
+		}
+		// default object type is OtObject
+		objectType := shared.OtObject
+		// for peers and auth file we require different objectTypes, so catch
+		peerPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR
+		authPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.AUTHJSON
+		// and set if path matches
+		if strings.HasPrefix(path, peerPath) {
+			objectType = shared.OtPeer
+		}
+		if strings.HasPrefix(path, authPath) {
+			objectType = shared.OtAuth
+		}
+		// we do this concurrently because each call can take a while
+		go c.encSend(address, stin.Identification, c.tin.Path+"/"+path, objectType)
+	}
+	// TODO when done with all upload, unlock peer! Can we unlock even though transfers are still running? WHERE do we unlock?
 }
 
 /*
-encSend handles uploading a file to the encrypted peer.
+encSend handles uploading a file to the encrypted peer. This function is MADE to
+run concurrently. Path is the path where the file CURRENTLY resides: the method
+will copy all its data to SENDINGDIR, encrypt it there, and then send it.
 */
 func (c *chaninterface) encSend(address, identification, path string, ot shared.ObjectType) {
+	// first send the push message so that it can be received while we work on preparing the file
 	pm := shared.CreatePushMessage(identification, "", ot)
 	// send push notify
-	_ = c.tin.channel.Send(address, pm.JSON())
+	err := c.tin.channel.Send(address, pm.JSON())
+	if err != nil {
+		c.warn("Failed to send push message:", err.Error())
+		return
+	}
+	// read file data
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		c.warn("Failed to read data:", err.Error())
+		return
+	}
 	// TODO encrypt here? The time it takes serves as a time pause for allowing enc to handle the push message...
-	log.Println("TODO: where do we encrypt?")
-	// FIXME ugh... this happens too fast, so wait:
-	// Maybe send ALL the push messages first, then start sending files?
+	log.Println("DEBUG: encrypt here, and once done, send if time since timeout is larger!")
+	// write to temp file
+	sendPath := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.SENDINGDIR + "/" + identification
+	err = ioutil.WriteFile(sendPath, data, shared.FILEPERMISSIONMODE)
+	if err != nil {
+		c.warn("Failed to write (encrypted) data to sending file:", err.Error())
+		return
+	}
 	<-time.After(1 * time.Second)
 	// send file
-	_ = c.tin.channel.SendFile(address, path, identification, func(success bool) {
+	_ = c.tin.channel.SendFile(address, sendPath, identification, func(success bool) {
 		if !success {
 			c.log("Failed to upload file!", ot.String(), identification)
 		}
 		// remove sending temp file always
-		err := os.Remove(path)
+		err := os.Remove(sendPath)
 		if err != nil {
 			c.warn("Failed to remove sending file!", err.Error())
 		}
 	})
 	// done
+	log.Println("DEBUG: done sending", identification)
 }
