@@ -102,7 +102,7 @@ func (c *chaninterface) doFullUpload(address string) error {
 encSend handles uploading a file to the encrypted peer.
 */
 func (c *chaninterface) encSend(address, identification, path string, ot shared.ObjectType) {
-	pm := shared.CreatePushMessage(identification, ot)
+	pm := shared.CreatePushMessage(identification, "", ot)
 	// send push notify
 	_ = c.tin.channel.Send(address, pm.JSON())
 	// TODO encrypt here? The time it takes serves as a time pause for allowing enc to handle the push message...

@@ -202,7 +202,7 @@ func (c *chaninterface) OnMessage(address, message string) {
 			// and done
 			return
 		}
-		// all others are only allowed if authenticated
+		// all others are only allowed depending on auth status
 		trusted, err := c.tin.isPeerTrusted(address)
 		if err != nil {
 			c.log("OnMessage:", err.Error())
