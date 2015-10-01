@@ -321,35 +321,6 @@ func (c *chaninterface) sendFile(address, path, identification string, f channel
 }
 
 /*
-remoteUpdate is a conveniance wrapper that fetches a file from the address for
-the given update and then applies it.
-*/
-func (c *chaninterface) remoteUpdate(address string, msg shared.UpdateMessage) {
-	// sanity check
-	if msg.Operation == shared.OpRemove || msg.Object.Directory {
-		c.warn("remoteUpdate called with remove or with directory, ignoring!")
-		return
-	}
-	// create & modify must first fetch file
-	rm := shared.CreateRequestMessage(shared.OtObject, msg.Object.Identification)
-	// request file and apply update on success
-	c.requestFile(address, rm, func(address, path string) {
-		// rename to correct name for model
-		err := os.Rename(path, c.temppath+"/"+rm.Identification)
-		if err != nil {
-			c.log("Failed to move file to temp: " + err.Error())
-			return
-		}
-		// apply
-		err = c.mergeUpdate(msg)
-		if err != nil {
-			c.log("File application error: " + err.Error())
-		}
-		// done
-	})
-}
-
-/*
 requestFile requests the given request from the address and executes the function
 when the transfer was successful or not. NOTE: only f may be nil.
 */

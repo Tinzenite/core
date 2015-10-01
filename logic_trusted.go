@@ -253,7 +253,23 @@ func (c *chaninterface) handleTrustedMessage(address string, msg *shared.UpdateM
 	op := msg.Operation
 	// create and modify must first fetch the file
 	if op == shared.OpCreate || op == shared.OpModify {
-		c.remoteUpdate(address, *msg)
+		// create & modify must first fetch file
+		rm := shared.CreateRequestMessage(shared.OtObject, msg.Object.Identification)
+		// request file and apply update on success
+		c.requestFile(address, rm, func(address, path string) {
+			// rename to correct name for model
+			err := os.Rename(path, c.temppath+"/"+rm.Identification)
+			if err != nil {
+				c.log("Failed to move file to temp: " + err.Error())
+				return
+			}
+			// apply
+			err = c.mergeUpdate(*msg)
+			if err != nil {
+				c.log("File application error: " + err.Error())
+			}
+			// done
+		})
 		// errors may turn up but only when the file has been received, so done here
 		return nil
 	} else if op == shared.OpRemove {

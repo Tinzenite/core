@@ -258,11 +258,16 @@ func (c *chaninterface) encModelReceived(address, path string) {
 			c.log("encModelReceived: handleMessage failed with:", err.Error())
 		}
 	}
+	// when completely done, start uploading current state
+	log.Println("DEBUG: now upload my current state to encrypted!")
+	// TODO if you have time, make this intelligent: no need to reload unchanged stuff.
 }
 
 /*
 handleEncryptedMessage looks at the message, fetches files if required, and correctly
 applies it to the model.
+
+TODO handle how we update the encrypted peer – upload created and modified files, remove deleted files.
 */
 func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.UpdateMessage) error {
 	// use check message to prepare message and check for special cases
@@ -273,7 +278,10 @@ func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.Updat
 	}
 	// if encrypted has a removal that we have registered as done, remove it
 	if err == model.ErrObjectRemovalDone {
-		log.Println("DEBUG: remove removal from encrypted.")
+		log.Println("DEBUG: remove removal from encrypted.", msg.String())
+		// TODO what exactly do I have to tell encrypted to remove? FIXME
+		nm := shared.CreateNotifyMessage(shared.NoRemoved, msg.Object.Identification)
+		c.tin.channel.Send(address, nm.JSON())
 		// done
 		return nil
 	}
@@ -290,7 +298,10 @@ func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.Updat
 	op := msg.Operation
 	// create and modify must first fetch the file
 	if op == shared.OpCreate || op == shared.OpModify {
-		log.Println("DEBUG: fetch file, decrypt, and apply")
+		rm := shared.CreateRequestMessage(shared.OtObject, msg.Object.Identification)
+		c.requestFile(address, rm, func(address, path string) {
+			log.Println("DEBUG: yup, file for update is here, now decrypt and apply.")
+		})
 		// errors may turn up but only when the file has been received, so done here
 		return nil
 	} else if op == shared.OpRemove {
