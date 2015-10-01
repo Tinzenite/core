@@ -36,6 +36,14 @@ func (c *chaninterface) onEncryptedMessage(address string, msgType shared.MsgTyp
 			return
 		}
 		c.onEncNotifyMessage(address, *msg)
+	case shared.MsgRequest:
+		msg := &shared.RequestMessage{}
+		err := json.Unmarshal([]byte(message), msg)
+		if err != nil {
+			log.Println(err.Error())
+			return
+		}
+		c.onEncRequestMessage(address, *msg)
 	default:
 		c.warn("Unknown object received:", msgType.String())
 	}
@@ -71,46 +79,19 @@ func (c *chaninterface) onEncNotifyMessage(address string, msg shared.NotifyMess
 		if msg.Identification == shared.IDMODEL {
 			// log that encrypted was empty and that we'll just upload our current state
 			c.log("Encrypted is empty, nothing to merge, uploading directly.")
-			c.doFullUpload(address)
+			// so send push for model and all objects
+			c.sendCompletePushes(address)
 			return
 		}
 		// if object --> error... maybe "reset" the encrypted peer?
-		log.Println("DEBUG: something missing!", msg.Identification, msg.Notify)
+		log.Println("DEBUG: object missing!", msg.Identification, msg.Notify)
 	default:
 		c.warn("Unknown notify type received:", msg.Notify.String())
 	}
 }
 
-/*
-doFullUpload uploads the current directory state to the encrypted peer. FIXME:
-unlocks the encrypted peer once done.
-*/
-func (c *chaninterface) doFullUpload(address string) {
-	// send model
-	modelPath := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.LOCALDIR + "/" + shared.MODELJSON
-	go c.encSend(address, shared.IDMODEL, modelPath, shared.OtModel)
-	// for peers and auth file we require different objectTypes, so catch
-	peerPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR
-	authPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.AUTHJSON
-	// now, send every file based on the tracked objects in the model
-	for path, stin := range c.tin.model.StaticInfos {
-		// if directory, skip
-		if stin.Directory {
-			continue
-		}
-		// default object type is OtObject
-		objectType := shared.OtObject
-		// and set if path matches
-		if strings.HasPrefix(path, peerPath) {
-			objectType = shared.OtPeer
-		}
-		if strings.HasPrefix(path, authPath) {
-			objectType = shared.OtAuth
-		}
-		// we do this concurrently because each call can take a while
-		go c.encSend(address, stin.Identification, c.tin.Path+"/"+path, objectType)
-	}
-	// TODO when done with all upload, unlock peer! Can we unlock even though transfers are still running? WHERE do we unlock?
+func (c *chaninterface) onEncRequestMessage(address string, msg shared.RequestMessage) {
+	log.Println("DEBUG: TODO: send file")
 }
 
 /*
@@ -119,14 +100,6 @@ run concurrently. Path is the path where the file CURRENTLY resides: the method
 will copy all its data to SENDINGDIR, encrypt it there, and then send it.
 */
 func (c *chaninterface) encSend(address, identification, path string, ot shared.ObjectType) {
-	// first send the push message so that it can be received while we work on preparing the file
-	pm := shared.CreatePushMessage(identification, ot)
-	// send push notify
-	err := c.tin.channel.Send(address, pm.JSON())
-	if err != nil {
-		c.warn("Failed to send push message:", err.Error())
-		return
-	}
 	// read file data
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -142,7 +115,8 @@ func (c *chaninterface) encSend(address, identification, path string, ot shared.
 		c.warn("Failed to write (encrypted) data to sending file:", err.Error())
 		return
 	}
-	<-time.After(1 * time.Second)
+	// sleep a bit so that the push message can be received
+	time.Sleep(1 * time.Second)
 	// send file
 	err = c.tin.channel.SendFile(address, sendPath, identification, func(success bool) {
 		if !success {
@@ -159,4 +133,33 @@ func (c *chaninterface) encSend(address, identification, path string, ot shared.
 		return
 	}
 	// done
+}
+
+func (c *chaninterface) sendCompletePushes(address string) {
+	// vars we'll use
+	var pm shared.PushMessage
+	peerDir := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR
+	authPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.AUTHJSON
+	// start by sending push for model
+	pm = shared.CreatePushMessage(shared.IDMODEL, shared.OtModel)
+	c.tin.channel.Send(address, pm.JSON())
+	for path, stin := range c.tin.model.StaticInfos {
+		// if directory, skip
+		if stin.Directory {
+			continue
+		}
+		// default object type is OtObject
+		objectType := shared.OtObject
+		// if peer --> update objectType
+		if strings.HasPrefix(path, peerDir) {
+			objectType = shared.OtPeer
+		}
+		// if auth file --> update objectType
+		if path == authPath {
+			objectType = shared.OtAuth
+		}
+		pm = shared.CreatePushMessage(stin.Identification, objectType)
+		c.tin.channel.Send(address, pm.JSON())
+	}
+	// and done
 }
