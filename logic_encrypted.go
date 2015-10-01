@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/tinzenite/shared"
 )
@@ -91,7 +90,22 @@ func (c *chaninterface) onEncNotifyMessage(address string, msg shared.NotifyMess
 }
 
 func (c *chaninterface) onEncRequestMessage(address string, msg shared.RequestMessage) {
-	log.Println("DEBUG: TODO: send file")
+	var path string
+	// if model has been requested --> path is different as not tracked itself
+	if msg.Identification == shared.IDMODEL {
+		path = c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.LOCALDIR + "/" + shared.MODELJSON
+	} else {
+		// get subPath for file
+		subPath, err := c.tin.model.GetSubPath(msg.Identification)
+		if err != nil {
+			c.warn("Failed to locate subpath for request message!", msg.Identification)
+			return
+		}
+		path = c.tin.Path + "/" + subPath
+	}
+	// and send file
+	go c.encSend(address, msg.Identification, path, msg.ObjType)
+	// TODO: shouldn't we reread the msg.ObjType from disk too?
 }
 
 /*
@@ -106,7 +120,7 @@ func (c *chaninterface) encSend(address, identification, path string, ot shared.
 		c.warn("Failed to read data:", err.Error())
 		return
 	}
-	// TODO encrypt here? The time it takes serves as a time pause for allowing enc to handle the push message...
+	// TODO encrypt here?
 	// log.Println("DEBUG: encrypt here, and once done, send if time since timeout is larger!")
 	// write to temp file
 	sendPath := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.SENDINGDIR + "/" + identification
@@ -115,8 +129,6 @@ func (c *chaninterface) encSend(address, identification, path string, ot shared.
 		c.warn("Failed to write (encrypted) data to sending file:", err.Error())
 		return
 	}
-	// sleep a bit so that the push message can be received
-	time.Sleep(1 * time.Second)
 	// send file
 	err = c.tin.channel.SendFile(address, sendPath, identification, func(success bool) {
 		if !success {
