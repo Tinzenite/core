@@ -220,7 +220,9 @@ func (c *chaninterface) sendCompletePushes(address string) {
 }
 
 /*
-encModelReceived is called when a model is received from an encrypted peer.
+encModelReceived is called when a model is received from an encrypted peer. It
+triggers the complete sync with the encrypted state, concluding with updating
+the encrypted peer to be up to date with this peer.
 */
 func (c *chaninterface) encModelReceived(address, path string) {
 	// no matter what: remove temp file
@@ -245,6 +247,7 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		return
 	}
 	// get difference in updates
+	// TODO to enable intelligent updating of encrypted, we also need to know how many updates WE are ahead after applying the foreignModel! FIXME NOTE
 	updateLists, err := c.tin.model.Sync(foreignModel)
 	if err != nil {
 		c.log("encModelReceived: failed to sync models:", err.Error())
@@ -260,6 +263,24 @@ func (c *chaninterface) encModelReceived(address, path string) {
 	}
 	// when completely done, start uploading current state
 	log.Println("DEBUG: now upload my current state to encrypted!")
+	// TODO make this work NOTE the following is just a TEST!!! FIXME
+	// model AFTER applying enc updates
+	newModel, err := c.tin.model.Read()
+	log.Println("DEBUG: read newModel")
+	if err != nil {
+		log.Println("retrieve error:", err)
+		return
+	}
+	encModel := model.Model{}
+	log.Println("DEBUG: created new model")
+	encModel.Bootstrap(foreignModel)
+	encUpdateList, err := encModel.Sync(newModel)
+	log.Println("DEBUG: synced encrypted with newModel state")
+	if err != nil {
+		log.Println("sync error", err)
+		return
+	}
+	log.Println("DEBUG: need to send", len(encUpdateList), "updates to encrypted!")
 	// TODO if you have time, make this intelligent: no need to reload unchanged stuff.
 }
 
@@ -300,7 +321,8 @@ func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.Updat
 	if op == shared.OpCreate || op == shared.OpModify {
 		rm := shared.CreateRequestMessage(shared.OtObject, msg.Object.Identification)
 		c.requestFile(address, rm, func(address, path string) {
-			log.Println("DEBUG: yup, file for update is here, now decrypt and apply.")
+			log.Println("DEBUG: yup, file for update is here, now decrypt and apply.", path)
+			// TODO decrypt
 		})
 		// errors may turn up but only when the file has been received, so done here
 		return nil
