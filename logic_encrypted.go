@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/tinzenite/model"
 	"github.com/tinzenite/shared"
 )
 
@@ -51,6 +52,9 @@ func (c *chaninterface) onEncryptedMessage(address string, msgType shared.MsgTyp
 /*
 onEncLockMessage handles lock messages. Notably it requests a model on a
 successful lock, starting a synchronization.
+
+FIXME: peer never sends a release request to locked encrypted peers! For now we
+just await the timeout... TODO
 */
 func (c *chaninterface) onEncLockMessage(address string, msg shared.LockMessage) {
 	switch msg.Action {
@@ -64,7 +68,7 @@ func (c *chaninterface) onEncLockMessage(address string, msg shared.LockMessage)
 		c.tin.peers[address].SetLocked(true)
 		// if LOCKED request model file to begin sync
 		rm := shared.CreateRequestMessage(shared.OtModel, shared.IDMODEL)
-		c.tin.channel.Send(address, rm.JSON())
+		c.requestFile(address, rm, c.encModelReceived)
 	case shared.LoRelease:
 		// unset lock of this peer
 		_, exists := c.tin.peers[address]
@@ -110,7 +114,25 @@ func (c *chaninterface) onEncRequestMessage(address string, msg shared.RequestMe
 	var path string
 	// if model has been requested --> path is different as not tracked itself
 	if msg.Identification == shared.IDMODEL {
-		path = c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.LOCALDIR + "/" + shared.MODELJSON
+		path = c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.SENDINGDIR + "/" + shared.MODELJSON
+		// get model info
+		model, err := c.tin.model.Read()
+		if err != nil {
+			c.warn("Failed to read model:", err.Error())
+			return
+		}
+		// convert to json
+		data, err := json.Marshal(model)
+		if err != nil {
+			c.warn("Failed to marshal model to JSON:", err.Error())
+			return
+		}
+		// write json to temp file
+		err = ioutil.WriteFile(path, data, shared.FILEPERMISSIONMODE)
+		if err != nil {
+			c.warn("Failed to write model info to temp file:", err.Error())
+			return
+		}
 	} else {
 		// get subPath for file
 		subPath, err := c.tin.model.GetSubPath(msg.Identification)
@@ -195,4 +217,86 @@ func (c *chaninterface) sendCompletePushes(address string) {
 		c.tin.channel.Send(address, pm.JSON())
 	}
 	// and done
+}
+
+/*
+encModelReceived is called when a model is received from an encrypted peer.
+*/
+func (c *chaninterface) encModelReceived(address, path string) {
+	// no matter what: remove temp file
+	defer func() {
+		err := os.Remove(path)
+		if err != nil {
+			c.warn("encModelReceived: failed to remove received temp model file!", err.Error())
+		}
+	}()
+	// read model
+	data, err := ioutil.ReadFile(path)
+	if err != nil {
+		c.log("encModelReceived: failed to read received model file:", err.Error())
+		return
+	}
+	// TODO decrypt here FIXME
+	// unmarshal
+	foreignModel := &shared.ObjectInfo{}
+	err = json.Unmarshal(data, foreignModel)
+	if err != nil {
+		c.log("encModelReceived: failed to parse JSON:", err.Error())
+		return
+	}
+	// get difference in updates
+	updateLists, err := c.tin.model.Sync(foreignModel)
+	if err != nil {
+		c.log("encModelReceived: failed to sync models:", err.Error())
+		return
+	}
+	// pretend that the updatemessage came from outside here
+	log.Println("DEBUG: encrypted is", len(updateLists), "possible operations ahead.")
+	for _, um := range updateLists {
+		err := c.handleEncryptedMessage(address, um)
+		if err != nil {
+			c.log("encModelReceived: handleMessage failed with:", err.Error())
+		}
+	}
+}
+
+/*
+handleEncryptedMessage looks at the message, fetches files if required, and correctly
+applies it to the model.
+*/
+func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.UpdateMessage) error {
+	// use check message to prepare message and check for special cases
+	msg, err := c.tin.model.CheckMessage(msg)
+	// if update known --> ignore it
+	if err == model.ErrIgnoreUpdate {
+		return nil
+	}
+	// if encrypted has a removal that we have registered as done, remove it
+	if err == model.ErrObjectRemovalDone {
+		log.Println("DEBUG: remove removal from encrypted.")
+		// done
+		return nil
+	}
+	// if still error, return it
+	if err != nil {
+		return err
+	}
+	// --> IF CheckMessage was ok, we can now handle applying the message
+	// apply directories directly
+	if msg.Object.Directory {
+		// no merge because it should never happen for directories
+		return c.tin.model.ApplyUpdateMessage(msg)
+	}
+	op := msg.Operation
+	// create and modify must first fetch the file
+	if op == shared.OpCreate || op == shared.OpModify {
+		log.Println("DEBUG: fetch file, decrypt, and apply")
+		// errors may turn up but only when the file has been received, so done here
+		return nil
+	} else if op == shared.OpRemove {
+		// remove is without file transfer, so directly apply
+		return c.mergeUpdate(*msg)
+	}
+	c.warn("Unknown operation received, ignoring update message!")
+	return shared.ErrIllegalParameters
 }

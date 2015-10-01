@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/tinzenite/channel"
-	"github.com/tinzenite/model"
 	"github.com/tinzenite/shared"
 )
 
@@ -322,64 +321,6 @@ func (c *chaninterface) sendFile(address, path, identification string, f channel
 }
 
 /*
-handleMessage looks at the message, fetches files if required, and correctly
-applies it to the model.
-*/
-func (c *chaninterface) handleMessage(address string, msg *shared.UpdateMessage) error {
-	// use check message to prepare message and check for special cases
-	msg, err := c.tin.model.CheckMessage(msg)
-	// if update known --> ignore it
-	if err == model.ErrIgnoreUpdate {
-		return nil
-	}
-	// if other side hasn't completed removal --> notify that we're done with it
-	if err == model.ErrObjectRemovalDone {
-		nm := shared.CreateNotifyMessage(shared.NoRemoved, msg.Object.Name)
-		c.tin.channel.Send(address, nm.JSON())
-		// done
-		return nil
-	}
-	// if still error, return it
-	if err != nil {
-		return err
-	}
-	// --> IF CheckMessage was ok, we can now handle applying the message
-	// if a transfer was previously in progress, cancel it as we need the newer one
-	key := c.buildKey(address, msg.Object.Identification)
-	_, exists := c.inTransfers[key]
-	if exists {
-		path := c.recpath + "/" + address + "." + msg.Object.Identification
-		err := c.tin.channel.CancelFileTransfer(path)
-		// if canceling failed throw the error up
-		if err != nil {
-			return err
-		}
-		// remove transfer
-		delete(c.inTransfers, key)
-		// remove file if no error
-		_ = os.Remove(path)
-		// done with old one, so continue handling the new update
-	}
-	// apply directories directly
-	if msg.Object.Directory {
-		// no merge because it should never happen for directories
-		return c.tin.model.ApplyUpdateMessage(msg)
-	}
-	op := msg.Operation
-	// create and modify must first fetch the file
-	if op == shared.OpCreate || op == shared.OpModify {
-		c.remoteUpdate(address, *msg)
-		// errors may turn up but only when the file has been received, so done here
-		return nil
-	} else if op == shared.OpRemove {
-		// remove is without file transfer, so directly apply
-		return c.mergeUpdate(*msg)
-	}
-	c.warn("Unknown operation received, ignoring update message!")
-	return shared.ErrIllegalParameters
-}
-
-/*
 remoteUpdate is a conveniance wrapper that fetches a file from the address for
 the given update and then applies it.
 */
@@ -433,8 +374,7 @@ func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f 
 		peers:   []string{address},
 		done:    f}
 	c.inTransfers[key] = tran
-	/*TODO send request to only one underutilized peer at once*/
-	// FOR NOW: just get it from whomever send the update
+	// request file from peer
 	return c.tin.channel.Send(address, rm.JSON())
 }
 
