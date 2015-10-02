@@ -265,7 +265,7 @@ func (c *chaninterface) encModelReceived(address, path string) {
 			if err != nil {
 				c.log("encModelReceived: handleMessage failed with:", err.Error())
 			}
-		}(um)
+		}(um) // pass UpdateMessage because otherwise the pointer will change on each for iteration
 	}
 	log.Println("DEBUG: WAITING to apply all update messages")
 	wg.Wait() // wait for all updates to have been applied
@@ -332,8 +332,20 @@ func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.Updat
 		c.requestFile(address, rm, func(address, path string) {
 			// force calling function to wait until this has been handled
 			defer func() { wg.Done() }()
-			log.Println("DEBUG: yup, file for update is here, now decrypt and apply.", path)
-			// TODO decrypt
+			// rename to correct name for model
+			err := os.Rename(path, c.temppath+"/"+rm.Identification)
+			if err != nil {
+				c.log("Failed to move file to temp: " + err.Error())
+				return
+			}
+			// TODO decrypt file!
+			log.Println("DEBUG: TODO: decrypt file here!")
+			// apply
+			err = c.mergeUpdate(*msg)
+			if err != nil {
+				c.log("File application error: " + err.Error())
+			}
+			// done
 		})
 		log.Println("DEBUG: WAITING on file")
 		// wait for file to be received before returning
