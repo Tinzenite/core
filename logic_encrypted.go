@@ -270,27 +270,36 @@ func (c *chaninterface) encModelReceived(address, path string) {
 	wg.Wait() // wait for all updates to have been applied
 	// when completely done, start uploading current state
 	log.Println("DEBUG: now upload my current state to encrypted!")
-	// this model AFTER applying enc updates
-	newModel, err := c.tin.model.Read()
-	if err != nil {
-		log.Println("retrieve error:", err)
-		return
+	// build path maps and associated object maps of foreign model
+	foreignPaths := make(map[string]bool)
+	foreignObjs := make(map[string]*shared.ObjectInfo)
+	foreignModel.ForEach(func(obj shared.ObjectInfo) {
+		foreignPaths[obj.Path] = true
+		// strip of children and write to objects
+		obj.Objects = nil
+		foreignObjs[obj.Path] = &obj
+	})
+	// get what must be changed
+	created, remained, removed := shared.Difference(c.tin.model.TrackedPaths, foreignPaths)
+	// for each path: check and create messages accordingly
+	for _, create := range created {
+		if foreignObjs[create].Directory {
+			continue
+		}
+		log.Println("Send push for", create)
 	}
-	//build a model from foreignModel
-	encModel := model.Build(foreignModel)
-	// NOW get the differences from the view of the foreignModel!
-	encUpdateList, err := encModel.Sync(newModel)
-	if err != nil {
-		log.Println("sync error:", err)
-		return
+	for _, remains := range remained {
+		if foreignObjs[remains].Directory {
+			continue
+		}
+		log.Println("Send push for", remains, "after checking modify!")
 	}
-	log.Println("DEBUG: need to send", len(encUpdateList), "updates to encrypted!")
-	// TODO if you have time, make this intelligent: no need to reload unchanged stuff.
-	for _, um := range encUpdateList {
-		log.Println("DEBUG: um to apply to encrypted:", um.String())
-		// TODO check how we have to modify the encrypted peer and do it
+	for _, remove := range removed {
+		if foreignObjs[remove].Directory {
+			continue
+		}
+		log.Println("Send notify for", remove)
 	}
-	// and done
 }
 
 /*
