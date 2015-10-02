@@ -239,7 +239,8 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		c.log("encModelReceived: failed to read received model file:", err.Error())
 		return
 	}
-	// TODO decrypt here FIXME
+	// TODO decrypt file!
+	log.Println("DEBUG: TODO: decrypt model here!")
 	// unmarshal
 	foreignModel := &shared.ObjectInfo{}
 	err = json.Unmarshal(data, foreignModel)
@@ -247,14 +248,13 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		c.log("encModelReceived: failed to parse JSON:", err.Error())
 		return
 	}
-	// get difference in updates
-	// TODO to enable intelligent updating of encrypted, we also need to know how many updates WE are ahead after applying the foreignModel! FIXME NOTE
+	// get updates we have to apply to ourselves before updating encrypted
 	updateLists, err := c.tin.model.Sync(foreignModel)
 	if err != nil {
 		c.log("encModelReceived: failed to sync models:", err.Error())
 		return
 	}
-	// pretend that the updatemessage came from outside here
+	// apply updates to bring our model to a merged state
 	log.Println("DEBUG: encrypted is", len(updateLists), "possible operations ahead.")
 	var wg sync.WaitGroup
 	for _, um := range updateLists {
@@ -267,21 +267,18 @@ func (c *chaninterface) encModelReceived(address, path string) {
 			}
 		}(um) // pass UpdateMessage because otherwise the pointer will change on each for iteration
 	}
-	log.Println("DEBUG: WAITING to apply all update messages")
 	wg.Wait() // wait for all updates to have been applied
 	// when completely done, start uploading current state
 	log.Println("DEBUG: now upload my current state to encrypted!")
-	// TODO make this work NOTE the following is just a TEST!!! FIXME
-	// model AFTER applying enc updates
+	// this model AFTER applying enc updates
 	newModel, err := c.tin.model.Read()
 	if err != nil {
 		log.Println("retrieve error:", err)
 		return
 	}
-	// TODO build a model from foreignModel, requires new model.method! FIXME NOTE CONTINUE HERE TAMINO!
-	encModel := model.Model{} // HERE HERE HERE
-	log.Println("TAMINO TODO DEBUG: implement a model.build method which builds a model from read output!")
-	// NOW get the differences
+	//build a model from foreignModel
+	encModel := model.Build(foreignModel)
+	// NOW get the differences from the view of the foreignModel!
 	encUpdateList, err := encModel.Sync(newModel)
 	if err != nil {
 		log.Println("sync error:", err)
@@ -289,6 +286,11 @@ func (c *chaninterface) encModelReceived(address, path string) {
 	}
 	log.Println("DEBUG: need to send", len(encUpdateList), "updates to encrypted!")
 	// TODO if you have time, make this intelligent: no need to reload unchanged stuff.
+	for _, um := range encUpdateList {
+		log.Println("DEBUG: um to apply to encrypted:", um.String())
+		// TODO check how we have to modify the encrypted peer and do it
+	}
+	// and done
 }
 
 /*
@@ -347,7 +349,6 @@ func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.Updat
 			}
 			// done
 		})
-		log.Println("DEBUG: WAITING on file")
 		// wait for file to be received before returning
 		wg.Wait()
 		// errors may turn up but only when the file has been received, so done here
