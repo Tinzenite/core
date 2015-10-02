@@ -144,16 +144,16 @@ func (c *chaninterface) onEncRequestMessage(address string, msg shared.RequestMe
 		path = c.tin.Path + "/" + subPath
 	}
 	// and send file (concurrent because of encryption)
-	go c.encSend(address, msg.Identification, path, msg.ObjType)
+	go c.encSendFile(address, msg.Identification, path, msg.ObjType)
 	// TODO: shouldn't we reread the msg.ObjType from disk too?
 }
 
 /*
-encSend handles uploading a file to the encrypted peer. This function is MADE to
-run concurrently. Path is the path where the file CURRENTLY resides: the method
+encSendFile handles uploading a file to the encrypted peer. This function is MADE
+to run concurrently. Path is the path where the file CURRENTLY resides: the method
 will copy all its data to SENDINGDIR, encrypt it there, and then send it.
 */
-func (c *chaninterface) encSend(address, identification, path string, ot shared.ObjectType) {
+func (c *chaninterface) encSendFile(address, identification, path string, ot shared.ObjectType) {
 	// read file data
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -161,7 +161,7 @@ func (c *chaninterface) encSend(address, identification, path string, ot shared.
 		return
 	}
 	// TODO encrypt here? FIXME
-	// log.Println("DEBUG: encrypt here, and once done, send if time since timeout is larger!")
+	log.Println("DEBUG: encrypt here")
 	// write to temp file
 	sendPath := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.SENDINGDIR + "/" + identification
 	err = ioutil.WriteFile(sendPath, data, shared.FILEPERMISSIONMODE)
@@ -194,8 +194,6 @@ This will result in the encrypted peer requesting all objects.
 func (c *chaninterface) sendCompletePushes(address string) {
 	// vars we'll use
 	var pm shared.PushMessage
-	peerDir := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR
-	authPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.AUTHJSON
 	// start by sending push for model
 	pm = shared.CreatePushMessage(shared.IDMODEL, shared.OtModel)
 	c.tin.channel.Send(address, pm.JSON())
@@ -204,18 +202,7 @@ func (c *chaninterface) sendCompletePushes(address string) {
 		if stin.Directory {
 			continue
 		}
-		// default object type is OtObject
-		objectType := shared.OtObject
-		// if peer --> update objectType
-		if strings.HasPrefix(path, peerDir) {
-			objectType = shared.OtPeer
-		}
-		// if auth file --> update objectType
-		if path == authPath {
-			objectType = shared.OtAuth
-		}
-		pm = shared.CreatePushMessage(stin.Identification, objectType)
-		c.tin.channel.Send(address, pm.JSON())
+		c.encSendPush(address, path, stin.Identification)
 	}
 	// and done
 }
@@ -280,26 +267,38 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		foreignObjs[obj.Path] = &obj
 	})
 	// get what must be changed
-	created, remained, removed := shared.Difference(c.tin.model.TrackedPaths, foreignPaths)
+	created, remained, removed := shared.Difference(foreignPaths, c.tin.model.TrackedPaths)
 	// for each path: check and create messages accordingly
 	for _, create := range created {
-		if foreignObjs[create].Directory {
+		if c.tin.model.StaticInfos[create].Directory {
 			continue
 		}
 		log.Println("Send push for", create)
+		c.encSendPush(address, create, c.tin.model.StaticInfos[create].Identification)
 	}
 	for _, remains := range remained {
 		if foreignObjs[remains].Directory {
 			continue
 		}
+		// TODO check if something changed since last push...
 		log.Println("Send push for", remains, "after checking modify!")
+		c.encSendPush(address, remains, foreignObjs[remains].Identification)
 	}
+	// removed objects: use notify to have encrypted delete them
 	for _, remove := range removed {
 		if foreignObjs[remove].Directory {
 			continue
 		}
 		log.Println("Send notify for", remove)
+		nm := shared.CreateNotifyMessage(shared.NoRemoved, foreignObjs[remove].Identification)
+		c.tin.channel.Send(address, nm.JSON())
 	}
+	// TODO wg wait here FIXME: waiting to unlock means waiting for requests. Abstract messages away into channels?
+	log.Println("DEBUG: done encrypted sync")
+	return
+	// finally unlock when done
+	lm := shared.CreateLockMessage(shared.LoRelease)
+	c.tin.channel.Send(address, lm.JSON())
 }
 
 /*
@@ -368,4 +367,25 @@ func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.Updat
 	}
 	c.warn("Unknown operation received, ignoring update message!")
 	return shared.ErrIllegalParameters
+}
+
+/*
+encSendPush sends a PushMessage for the given parameters, setting the ObjType
+according to the path.
+*/
+func (c *chaninterface) encSendPush(address, path, identification string) {
+	peerDir := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR
+	authPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.AUTHJSON
+	// default object type is OtObject
+	objectType := shared.OtObject
+	// if peer --> update objectType
+	if strings.HasPrefix(path, peerDir) {
+		objectType = shared.OtPeer
+	}
+	// if auth file --> update objectType
+	if path == authPath {
+		objectType = shared.OtAuth
+	}
+	pm := shared.CreatePushMessage(identification, objectType)
+	c.tin.channel.Send(address, pm.JSON())
 }
