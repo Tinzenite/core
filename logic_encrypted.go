@@ -270,19 +270,31 @@ func (c *chaninterface) encModelReceived(address, path string) {
 	created, remained, removed := shared.Difference(foreignPaths, c.tin.model.TrackedPaths)
 	// for each path: check and create messages accordingly
 	for _, create := range created {
-		if c.tin.model.StaticInfos[create].Directory {
+		stin, exists := c.tin.model.StaticInfos[create]
+		if !exists {
+			// continue because this means it doesn't actually exist
+			c.warn("encModelReceived: missing stin for locally created object!")
 			continue
 		}
-		log.Println("Send push for", create)
-		c.encSendPush(address, create, c.tin.model.StaticInfos[create].Identification)
+		if stin.Directory {
+			continue
+		}
+		log.Println("Send push for", create, stin.Identification)
+		c.encSendPush(address, create, stin.Identification)
 	}
 	for _, remains := range remained {
-		if foreignObjs[remains].Directory {
+		stin, exists := c.tin.model.StaticInfos[remains]
+		if !exists {
+			// continue because this means it doesn't actually exist
+			c.warn("encModelReceived: missing stin for locally held object!")
+			continue
+		}
+		if stin.Directory {
 			continue
 		}
 		// TODO check if something changed since last push...
 		log.Println("Send push for", remains, "after checking modify!")
-		c.encSendPush(address, remains, foreignObjs[remains].Identification)
+		c.encSendPush(address, remains, stin.Identification)
 	}
 	// removed objects: use notify to have encrypted delete them
 	for _, remove := range removed {
