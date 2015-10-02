@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/tinzenite/model"
 	"github.com/tinzenite/shared"
@@ -255,15 +256,21 @@ func (c *chaninterface) encModelReceived(address, path string) {
 	}
 	// pretend that the updatemessage came from outside here
 	log.Println("DEBUG: encrypted is", len(updateLists), "possible operations ahead.")
+	var wg sync.WaitGroup
 	for _, um := range updateLists {
-		err := c.handleEncryptedMessage(address, um)
-		if err != nil {
-			c.log("encModelReceived: handleMessage failed with:", err.Error())
-		}
+		wg.Add(1) // wait for each subroutine
+		go func(um *shared.UpdateMessage) {
+			defer func() { wg.Done() }() // no matter what unlock sync
+			err := c.handleEncryptedMessage(address, um)
+			if err != nil {
+				c.log("encModelReceived: handleMessage failed with:", err.Error())
+			}
+		}(um)
 	}
+	log.Println("DEBUG: WAITING to apply all update messages")
+	wg.Wait() // wait for all updates to have been applied
 	// when completely done, start uploading current state
 	log.Println("DEBUG: now upload my current state to encrypted!")
-	return // FIXME remove when continuing!
 	// TODO make this work NOTE the following is just a TEST!!! FIXME
 	// model AFTER applying enc updates
 	newModel, err := c.tin.model.Read()
@@ -320,10 +327,17 @@ func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.Updat
 	// create and modify must first fetch the file
 	if op == shared.OpCreate || op == shared.OpModify {
 		rm := shared.CreateRequestMessage(shared.OtObject, msg.Object.Identification)
+		var wg sync.WaitGroup
+		wg.Add(1)
 		c.requestFile(address, rm, func(address, path string) {
+			// force calling function to wait until this has been handled
+			defer func() { wg.Done() }()
 			log.Println("DEBUG: yup, file for update is here, now decrypt and apply.", path)
 			// TODO decrypt
 		})
+		log.Println("DEBUG: WAITING on file")
+		// wait for file to be received before returning
+		wg.Wait()
 		// errors may turn up but only when the file has been received, so done here
 		return nil
 	} else if op == shared.OpRemove {
