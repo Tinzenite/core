@@ -161,7 +161,7 @@ func (c *chaninterface) encSendFile(address, identification, path string, ot sha
 		return
 	}
 	// TODO encrypt here? FIXME
-	log.Println("DEBUG: encrypt here")
+	// log.Println("DEBUG: encrypt here")
 	// write to temp file
 	sendPath := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.SENDINGDIR + "/" + identification
 	err = ioutil.WriteFile(sendPath, data, shared.FILEPERMISSIONMODE)
@@ -227,7 +227,7 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		return
 	}
 	// TODO decrypt file!
-	log.Println("DEBUG: TODO: decrypt model here!")
+	// log.Println("DEBUG: TODO: decrypt model here!")
 	// unmarshal
 	foreignModel := &shared.ObjectInfo{}
 	err = json.Unmarshal(data, foreignModel)
@@ -245,14 +245,16 @@ func (c *chaninterface) encModelReceived(address, path string) {
 	log.Println("DEBUG: encrypted is", len(updateLists), "possible operations ahead.")
 	var wg sync.WaitGroup
 	for _, um := range updateLists {
+		log.Println("DEBUG: pointer value:", um)
 		wg.Add(1) // wait for each subroutine
-		go func(um *shared.UpdateMessage) {
+		// pass by value, not reference
+		go func(um shared.UpdateMessage) {
 			defer func() { wg.Done() }() // no matter what unlock sync
-			err := c.handleEncryptedMessage(address, um)
+			err := c.handleEncryptedMessage(address, &um)
 			if err != nil {
 				c.log("encModelReceived: handleMessage failed with:", err.Error())
 			}
-		}(um) // pass UpdateMessage because otherwise the pointer will change on each for iteration
+		}(*um) // pass UpdateMessage because otherwise the pointer will change on each for iteration
 	}
 	wg.Wait() // wait for all updates to have been applied
 	// when completely done, start uploading current state
@@ -279,7 +281,7 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		if stin.Directory {
 			continue
 		}
-		log.Println("Send push for", create, stin.Identification)
+		log.Println("Send push for created", create)
 		c.encSendPush(address, create, stin.Identification)
 	}
 	for _, remains := range remained {
@@ -293,7 +295,7 @@ func (c *chaninterface) encModelReceived(address, path string) {
 			continue
 		}
 		// TODO check if something changed since last push...
-		log.Println("Send push for", remains, "after checking modify!", stin.Identification)
+		log.Println("Send push for modified", remains)
 		c.encSendPush(address, remains, stin.Identification)
 	}
 	// removed objects: use notify to have encrypted delete them
@@ -306,7 +308,7 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		if stin.Directory {
 			continue
 		}
-		log.Println("Send notify for", remove, stin.Identification)
+		log.Println("Send notify for removal of", remove)
 		nm := shared.CreateNotifyMessage(shared.NoRemoved, stin.Identification)
 		c.tin.channel.Send(address, nm.JSON())
 	}
@@ -366,7 +368,7 @@ func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.Updat
 				return
 			}
 			// TODO decrypt file!
-			log.Println("DEBUG: TODO: decrypt file here!")
+			// log.Println("DEBUG: TODO: decrypt file here!")
 			// apply
 			err = c.mergeUpdate(*msg)
 			if err != nil {
