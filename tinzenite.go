@@ -523,14 +523,10 @@ func (t *Tinzenite) background() {
 			if msg.Object.Directory {
 				name += "/++"
 			}
-			// send to all authenticated, online peers
-			for address, peer := range t.peers {
-				// don't send to peers that can't do something with it --> only trusted, authenticated peers
-				if !peer.IsAuthenticated() {
-					continue
-				}
-				// no need to try to send something if offline
-				if online, _ := t.channel.IsAddressOnline(address); !online {
+			// send to all trusted peers
+			for address := range t.peers {
+				trusted, _ := t.isPeerTrusted(address)
+				if !trusted {
 					continue
 				}
 				log.Printf("Tin: sending <%s> of <.../%s> to %s.\n", msg.Operation, name, address[:8])
