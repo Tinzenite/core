@@ -293,16 +293,21 @@ func (c *chaninterface) encModelReceived(address, path string) {
 			continue
 		}
 		// TODO check if something changed since last push...
-		log.Println("Send push for", remains, "after checking modify!")
+		log.Println("Send push for", remains, "after checking modify!", stin.Identification)
 		c.encSendPush(address, remains, stin.Identification)
 	}
 	// removed objects: use notify to have encrypted delete them
 	for _, remove := range removed {
-		if foreignObjs[remove].Directory {
+		stin, exists := foreignObjs[remove]
+		if !exists {
+			c.warn("encModelReceived: missing stin from foreign objects!")
 			continue
 		}
-		log.Println("Send notify for", remove)
-		nm := shared.CreateNotifyMessage(shared.NoRemoved, foreignObjs[remove].Identification)
+		if stin.Directory {
+			continue
+		}
+		log.Println("Send notify for", remove, stin.Identification)
+		nm := shared.CreateNotifyMessage(shared.NoRemoved, stin.Identification)
 		c.tin.channel.Send(address, nm.JSON())
 	}
 	// TODO wg wait here FIXME: waiting to unlock means waiting for requests. Abstract messages away into channels?
