@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,6 +84,7 @@ func (t *Tinzenite) SyncEncrypted() error {
 	}
 	// build lock message we'll use for all
 	lm := shared.CreateLockMessage(shared.LoRequest)
+	ulm := shared.CreateLockMessage(shared.LoRelease)
 	// try to lock all encrypted peers
 	for address, peer := range t.peers {
 		trusted, err := t.isPeerTrusted(address)
@@ -90,14 +92,25 @@ func (t *Tinzenite) SyncEncrypted() error {
 		if trusted || err != nil {
 			continue
 		}
-		// check if online
-		if online, _ := t.channel.IsAddressOnline(address); !online {
-			continue
-		}
 		// if already locked transfer is in progress, so ignore
 		if peer.IsLocked() {
-			log.Println("DEBUG: peer already locked, skipping this time!")
-			continue
+			// if no transfers exists any more for this peer, unlock and release
+			var active bool
+			for key := range t.cInterface.outTransfers {
+				if strings.Contains(key, peer.Address) {
+					active = true
+					break
+				}
+			}
+			// if still active ignore
+			if active {
+				log.Println("DEBUG: peer still active")
+				continue
+			}
+			log.Println("DEBUG: releasing peer as no transfers still active")
+			// if NOT active any more, unlock and send release message
+			peer.SetLocked(false)
+			t.channel.Send(address, ulm.JSON())
 		}
 		// try to lock
 		t.channel.Send(address, lm.JSON())

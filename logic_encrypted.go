@@ -144,6 +144,7 @@ func (c *chaninterface) onEncRequestMessage(address string, msg shared.RequestMe
 		path = c.tin.Path + "/" + subPath
 	}
 	// and send file (concurrent because of encryption)
+	log.Println("DEBUG: sending", path, "as", msg.ObjType)
 	go c.encSendFile(address, msg.Identification, path, msg.ObjType)
 	// TODO: shouldn't we reread the msg.ObjType from disk too?
 }
@@ -211,6 +212,9 @@ func (c *chaninterface) sendCompletePushes(address string) {
 encModelReceived is called when a model is received from an encrypted peer. It
 triggers the complete sync with the encrypted state, concluding with updating
 the encrypted peer to be up to date with this peer.
+
+NOTE: this is a long method because it blocks until ALL operations required for
+the complete model sync have completed. FIXME: make this work better.
 */
 func (c *chaninterface) encModelReceived(address, path string) {
 	// no matter what: remove temp file
@@ -242,10 +246,8 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		return
 	}
 	// apply updates to bring our model to a merged state
-	log.Println("DEBUG: encrypted is", len(updateLists), "possible operations ahead.")
 	var wg sync.WaitGroup
 	for _, um := range updateLists {
-		log.Println("DEBUG: pointer value:", um)
 		wg.Add(1) // wait for each subroutine
 		// pass by value, not reference
 		go func(um shared.UpdateMessage) {
@@ -294,7 +296,17 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		if stin.Directory {
 			continue
 		}
-		// TODO check if something changed since last push...
+		// fetch foreign object
+		fObj, exists := foreignObjs[remains]
+		if !exists {
+			c.warn("encModelReceived: missing foreign object for locally held object!")
+			continue
+		}
+		// if remote version already includes all known changes of local version, no need to send update, so continue
+		if fObj.Version.Includes(stin.Version) {
+			continue
+		}
+		// this means something has changed so reupload the object, overwritting the old version.
 		log.Println("Send push for modified", remains)
 		c.encSendPush(address, remains, stin.Identification)
 	}
