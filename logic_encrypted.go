@@ -249,125 +249,10 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		foreignObjs[obj.Path] = obj
 	})
 	// STEP ONE: get differences that THIS must get and apply from FOREIGN
-	// get differences that foreignPaths may be ahead of
-	created, remained, removed := shared.Difference(c.tin.model.TrackedPaths, foreignPaths)
-	// we will wait until all updates have succesfully applied
-	var wg sync.WaitGroup
-	// all updates are applied with the same function, so reuse it
-	apply := func(um shared.UpdateMessage) {
-		defer func() { wg.Done() }() // no matter what unlock sync
-		err := c.handleEncryptedMessage(address, &um)
-		if err != nil {
-			c.log("encModelReceived: handleEncryptedMessage failed:", err.Error())
-		}
-	}
-	for _, create := range created {
-		log.Println("FOREIGN CREATED", create)
-		um := shared.CreateUpdateMessage(shared.OpCreate, foreignObjs[create])
-		wg.Add(1)
-		go apply(um)
-	}
-	for _, remains := range remained {
-		log.Println("FOREIGN REMAINED", remains)
-		// get local stin
-		stin, exists := c.tin.model.StaticInfos[remains]
-		if !exists {
-			c.warn("encModelReceived: object for modify check not found!")
-			continue
-		}
-		// check if we must apply a modify
-		if stin.Version.Includes(foreignObjs[remains].Version) {
-			continue
-		}
-		um := shared.CreateUpdateMessage(shared.OpModify, foreignObjs[remains])
-		wg.Add(1)
-		go apply(um)
-	}
-	for _, remove := range removed {
-		log.Println("FOREIGN REMOVED", remove)
-		// for remove we must use local object as no foreign one exists
-		relPath := shared.CreatePath(c.tin.Path, remove)
-		obj, err := c.tin.model.GetInfo(relPath)
-		if err != nil {
-			c.warn("encModelReceived: object for removal not found:", err.Error())
-			continue
-		}
-		um := shared.CreateUpdateMessage(shared.OpRemove, *obj)
-		wg.Add(1)
-		go apply(um)
-	}
-	// wait until everything has been applied
-	wg.Wait()
+	c.encApplyPeer(address, foreignPaths, foreignObjs)
 	log.Println("DEBUG: completed sync to local, now syncing encrypted")
 	// STEP TWO: get difference that must be UPLOADED to foreign to make it equal to THIS
-	created, remained, removed = shared.Difference(foreignPaths, c.tin.model.TrackedPaths)
-	// if no differences, we can immediately unlock and release the encryted peer
-	if len(created) == 0 && len(remained) == 0 && len(removed) == 0 {
-		log.Println("DEBUG: no changes to unlock, releasing immediately")
-		_, exists := c.tin.peers[address]
-		if !exists {
-			c.warn("encModelReceived: failed to preemptively release peer, doesn't exist!")
-			// just return, may release later or timout
-			return
-		}
-		ulm := shared.CreateLockMessage(shared.LoRelease)
-		c.tin.channel.Send(address, ulm.JSON())
-		c.tin.peers[address].SetLocked(false)
-		// and done so return
-		return
-	}
-	// for each path: check and create messages accordingly
-	for _, create := range created {
-		stin, exists := c.tin.model.StaticInfos[create]
-		if !exists {
-			// continue because this means it doesn't actually exist
-			c.warn("encModelReceived: missing stin for locally created object!")
-			continue
-		}
-		if stin.Directory {
-			continue
-		}
-		log.Println("Send push for created", create)
-		c.encSendPush(address, create, stin.Identification)
-	}
-	for _, remains := range remained {
-		stin, exists := c.tin.model.StaticInfos[remains]
-		if !exists {
-			// continue because this means it doesn't actually exist
-			c.warn("encModelReceived: missing stin for locally held object!")
-			continue
-		}
-		if stin.Directory {
-			continue
-		}
-		// fetch foreign object
-		fObj, exists := foreignObjs[remains]
-		if !exists {
-			c.warn("encModelReceived: missing foreign object for locally held object!")
-			continue
-		}
-		// if remote version already includes all known changes of local version, no need to send update, so continue
-		if fObj.Version.Includes(stin.Version) {
-			continue
-		}
-		// this means something has changed so reupload the object, overwritting the old version.
-		log.Println("Send push for modified", remains)
-		c.encSendPush(address, remains, stin.Identification)
-	}
-	// removed objects: use notify to have encrypted delete them
-	for _, remove := range removed {
-		stin, exists := foreignObjs[remove]
-		if !exists {
-			c.warn("encModelReceived: missing stin from foreign objects!")
-			continue
-		}
-		if stin.Directory {
-			continue
-		}
-		log.Println("Send notify for removal of", remove)
-		nm := shared.CreateNotifyMessage(shared.NoRemoved, stin.Identification)
-		c.tin.channel.Send(address, nm.JSON())
-	}
+	c.encApplyLocal(address, foreignPaths, foreignObjs)
 	log.Println("DEBUG: done encrypted sync, awaiting transfer completion")
 	// NOTE encrypted will be unlocked once all transfers are complete, see tinzenite.SyncEncrypted
 }
@@ -436,6 +321,138 @@ func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.Updat
 	}
 	c.warn("Unknown operation received, ignoring update message!")
 	return shared.ErrIllegalParameters
+}
+
+/*
+encApplyPeer applies the foreign state of encrypted to the local model state by
+fetching and applying everything.
+*/
+func (c *chaninterface) encApplyPeer(address string, foreignPaths map[string]bool, foreignObjs map[string]shared.ObjectInfo) {
+	// get differences that foreignPaths may be ahead of
+	created, remained, removed := shared.Difference(c.tin.model.TrackedPaths, foreignPaths)
+	// we will wait until all updates have succesfully applied
+	var wg sync.WaitGroup
+	// all updates are applied with the same function, so reuse it
+	apply := func(um shared.UpdateMessage) {
+		defer func() { wg.Done() }() // no matter what unlock sync
+		err := c.handleEncryptedMessage(address, &um)
+		if err != nil {
+			c.log("encApplyPeer: handleEncryptedMessage: failed:", err.Error())
+		}
+	}
+	for _, create := range created {
+		log.Println("FOREIGN CREATED", create)
+		um := shared.CreateUpdateMessage(shared.OpCreate, foreignObjs[create])
+		wg.Add(1)
+		go apply(um)
+	}
+	for _, remains := range remained {
+		log.Println("FOREIGN REMAINED", remains)
+		// get local stin
+		stin, exists := c.tin.model.StaticInfos[remains]
+		if !exists {
+			c.warn("encApplyPeer: object for modify check not found!")
+			continue
+		}
+		// check if we must apply a modify
+		if stin.Version.Includes(foreignObjs[remains].Version) {
+			continue
+		}
+		um := shared.CreateUpdateMessage(shared.OpModify, foreignObjs[remains])
+		wg.Add(1)
+		go apply(um)
+	}
+	for _, remove := range removed {
+		log.Println("FOREIGN REMOVED", remove)
+		// for remove we must use local object as no foreign one exists
+		relPath := shared.CreatePath(c.tin.Path, remove)
+		obj, err := c.tin.model.GetInfo(relPath)
+		if err != nil {
+			c.warn("encApplyPeer: object for removal not found:", err.Error())
+			continue
+		}
+		um := shared.CreateUpdateMessage(shared.OpRemove, *obj)
+		wg.Add(1)
+		go apply(um)
+	}
+	// wait until everything has been applied
+	wg.Wait()
+}
+
+/*
+encApplyLocal applies the local peer to the encrypted peer and sends the
+required PushMessages.
+*/
+func (c *chaninterface) encApplyLocal(address string, foreignPaths map[string]bool, foreignObjs map[string]shared.ObjectInfo) {
+	created, remained, removed := shared.Difference(foreignPaths, c.tin.model.TrackedPaths)
+	// if no differences, we can immediately unlock and release the encryted peer
+	if len(created) == 0 && len(remained) == 0 && len(removed) == 0 {
+		log.Println("DEBUG: no changes to unlock, releasing immediately")
+		_, exists := c.tin.peers[address]
+		if !exists {
+			c.warn("encApplyLocal: failed to preemptively release peer, doesn't exist!")
+			// just return, may release later or timout
+			return
+		}
+		ulm := shared.CreateLockMessage(shared.LoRelease)
+		c.tin.channel.Send(address, ulm.JSON())
+		c.tin.peers[address].SetLocked(false)
+		// and done so return
+		return
+	}
+	// for each path: check and create messages accordingly
+	for _, create := range created {
+		stin, exists := c.tin.model.StaticInfos[create]
+		if !exists {
+			// continue because this means it doesn't actually exist
+			c.warn("encApplyLocal: missing stin for locally created object!")
+			continue
+		}
+		if stin.Directory {
+			continue
+		}
+		log.Println("Send push for created", create)
+		c.encSendPush(address, create, stin.Identification)
+	}
+	for _, remains := range remained {
+		stin, exists := c.tin.model.StaticInfos[remains]
+		if !exists {
+			// continue because this means it doesn't actually exist
+			c.warn("encApplyLocal: missing stin for locally held object!")
+			continue
+		}
+		if stin.Directory {
+			continue
+		}
+		// fetch foreign object
+		fObj, exists := foreignObjs[remains]
+		if !exists {
+			c.warn("encApplyLocal: missing foreign object for locally held object!")
+			continue
+		}
+		// if remote version already includes all known changes of local version, no need to send update, so continue
+		if fObj.Version.Includes(stin.Version) {
+			continue
+		}
+		// this means something has changed so reupload the object, overwritting the old version.
+		log.Println("Send push for modified", remains)
+		c.encSendPush(address, remains, stin.Identification)
+	}
+	// removed objects: use notify to have encrypted delete them
+	for _, remove := range removed {
+		stin, exists := foreignObjs[remove]
+		if !exists {
+			c.warn("encApplyLocal: missing stin from foreign objects!")
+			continue
+		}
+		if stin.Directory {
+			continue
+		}
+		log.Println("Send notify for removal of", remove)
+		nm := shared.CreateNotifyMessage(shared.NoRemoved, stin.Identification)
+		c.tin.channel.Send(address, nm.JSON())
+	}
+	// and done
 }
 
 /*
