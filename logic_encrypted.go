@@ -144,7 +144,6 @@ func (c *chaninterface) onEncRequestMessage(address string, msg shared.RequestMe
 		path = c.tin.Path + "/" + subPath
 	}
 	// and send file (concurrent because of encryption)
-	log.Println("DEBUG: sending", path, "as", msg.ObjType)
 	go c.encSendFile(address, msg.Identification, path, msg.ObjType)
 	// TODO: shouldn't we reread the msg.ObjType from disk too?
 }
@@ -250,11 +249,10 @@ func (c *chaninterface) encModelReceived(address, path string) {
 	})
 	// STEP ONE: get differences that THIS must get and apply from FOREIGN
 	c.encApplyPeer(address, foreignPaths, foreignObjs)
-	log.Println("DEBUG: completed sync to local, now syncing encrypted")
 	// STEP TWO: get difference that must be UPLOADED to foreign to make it equal to THIS
 	c.encApplyLocal(address, foreignPaths, foreignObjs)
-	log.Println("DEBUG: done encrypted sync, awaiting transfer completion")
 	// NOTE encrypted will be unlocked once all transfers are complete, see tinzenite.SyncEncrypted
+	log.Println("DEBUG: done encrypted sync, awaiting transfer completion")
 }
 
 /*
@@ -335,19 +333,18 @@ func (c *chaninterface) encApplyPeer(address string, foreignPaths map[string]boo
 	// all updates are applied with the same function, so reuse it
 	apply := func(um shared.UpdateMessage) {
 		defer func() { wg.Done() }() // no matter what unlock sync
+		log.Println("DEBUG: fetching", um.Object.Path, "as", um.Operation)
 		err := c.handleEncryptedMessage(address, &um)
 		if err != nil {
 			c.log("encApplyPeer: handleEncryptedMessage: failed:", err.Error())
 		}
 	}
 	for _, create := range created {
-		log.Println("FOREIGN CREATED", create)
 		um := shared.CreateUpdateMessage(shared.OpCreate, foreignObjs[create])
 		wg.Add(1)
 		go apply(um)
 	}
 	for _, remains := range remained {
-		log.Println("FOREIGN REMAINED", remains)
 		// get local stin
 		stin, exists := c.tin.model.StaticInfos[remains]
 		if !exists {
@@ -362,8 +359,9 @@ func (c *chaninterface) encApplyPeer(address string, foreignPaths map[string]boo
 		wg.Add(1)
 		go apply(um)
 	}
+	// wait for all created and modified to have been applied so that we can check if removals exist
+	wg.Wait()
 	for _, remove := range removed {
-		log.Println("FOREIGN REMOVED", remove)
 		// for remove we must use local object as no foreign one exists
 		relPath := shared.CreatePath(c.tin.Path, remove)
 		obj, err := c.tin.model.GetInfo(relPath)
@@ -371,6 +369,11 @@ func (c *chaninterface) encApplyPeer(address string, foreignPaths map[string]boo
 			c.warn("encApplyPeer: object for removal not found:", err.Error())
 			continue
 		}
+		// check if actually removed
+		if !c.tin.model.IsRemoved(obj.Identification) {
+			continue
+		}
+		// if not update as removal
 		um := shared.CreateUpdateMessage(shared.OpRemove, *obj)
 		wg.Add(1)
 		go apply(um)

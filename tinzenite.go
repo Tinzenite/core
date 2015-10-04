@@ -104,13 +104,16 @@ func (t *Tinzenite) SyncEncrypted() error {
 			}
 			// if still active ignore
 			if active {
-				log.Println("DEBUG: peer still active")
 				continue
 			}
-			log.Println("DEBUG: releasing peer as no transfers still active")
 			// if NOT active any more, unlock and send release message
 			peer.SetLocked(false)
 			t.channel.Send(address, ulm.JSON())
+		}
+		// check if online
+		online, _ := t.channel.IsAddressOnline(address)
+		if !online {
+			continue
 		}
 		// try to lock
 		t.channel.Send(address, lm.JSON())
