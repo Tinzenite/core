@@ -239,28 +239,6 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		c.log("encModelReceived: failed to parse JSON:", err.Error())
 		return
 	}
-	// get updates we have to apply to ourselves before updating encrypted
-	updateLists, err := c.tin.model.Sync(foreignModel)
-	if err != nil {
-		c.log("encModelReceived: failed to sync models:", err.Error())
-		return
-	}
-	// apply updates to bring our model to a merged state
-	var wg sync.WaitGroup
-	for _, um := range updateLists {
-		wg.Add(1) // wait for each subroutine
-		// pass by value, not reference
-		go func(um shared.UpdateMessage) {
-			defer func() { wg.Done() }() // no matter what unlock sync
-			err := c.handleEncryptedMessage(address, &um)
-			if err != nil {
-				c.log("encModelReceived: handleMessage failed with:", err.Error())
-			}
-		}(*um) // pass UpdateMessage because otherwise the pointer will change on each for iteration
-	}
-	wg.Wait() // wait for all updates to have been applied
-	// when completely done, start uploading current state
-	log.Println("DEBUG: now upload my current state to encrypted!")
 	// build path maps and associated object maps of foreign model
 	foreignPaths := make(map[string]bool)
 	foreignObjs := make(map[string]*shared.ObjectInfo)
@@ -270,8 +248,20 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		obj.Objects = nil
 		foreignObjs[obj.Path] = &obj
 	})
-	// get what must be changed
-	created, remained, removed := shared.Difference(foreignPaths, c.tin.model.TrackedPaths)
+	// STEP ONE: get differences that THIS must get and apply from FOREIGN
+	// get differences that foreignPaths may be ahead of
+	created, remained, removed := shared.Difference(c.tin.model.TrackedPaths, foreignPaths)
+	for _, create := range created {
+		log.Println("FOREIGN CREATED", create)
+	}
+	for _, remains := range remained {
+		log.Println("FOREIGN REMAINED", remains)
+	}
+	for _, remove := range removed {
+		log.Println("FOREIGN REMOVED", remove)
+	}
+	// STEP TWO: get difference that must be UPLOADED to foreign to make it equal to THIS
+	created, remained, removed = shared.Difference(foreignPaths, c.tin.model.TrackedPaths)
 	// for each path: check and create messages accordingly
 	for _, create := range created {
 		stin, exists := c.tin.model.StaticInfos[create]
@@ -324,12 +314,8 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		nm := shared.CreateNotifyMessage(shared.NoRemoved, stin.Identification)
 		c.tin.channel.Send(address, nm.JSON())
 	}
-	// TODO wg wait here FIXME: waiting to unlock means waiting for requests. Abstract messages away into channels?
-	log.Println("DEBUG: done encrypted sync")
-	return
-	// finally unlock when done
-	lm := shared.CreateLockMessage(shared.LoRelease)
-	c.tin.channel.Send(address, lm.JSON())
+	log.Println("DEBUG: done encrypted sync, awaiting transfer completion")
+	// NOTE encrypted will be unlocked once all transfers are complete, see tinzenite.SyncEncrypted
 }
 
 /*
