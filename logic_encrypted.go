@@ -241,27 +241,81 @@ func (c *chaninterface) encModelReceived(address, path string) {
 	}
 	// build path maps and associated object maps of foreign model
 	foreignPaths := make(map[string]bool)
-	foreignObjs := make(map[string]*shared.ObjectInfo)
+	foreignObjs := make(map[string]shared.ObjectInfo)
 	foreignModel.ForEach(func(obj shared.ObjectInfo) {
 		foreignPaths[obj.Path] = true
 		// strip of children and write to objects
 		obj.Objects = nil
-		foreignObjs[obj.Path] = &obj
+		foreignObjs[obj.Path] = obj
 	})
 	// STEP ONE: get differences that THIS must get and apply from FOREIGN
 	// get differences that foreignPaths may be ahead of
 	created, remained, removed := shared.Difference(c.tin.model.TrackedPaths, foreignPaths)
+	// we will wait until all updates have succesfully applied
+	var wg sync.WaitGroup
+	// all updates are applied with the same function, so reuse it
+	apply := func(um shared.UpdateMessage) {
+		defer func() { wg.Done() }() // no matter what unlock sync
+		err := c.handleEncryptedMessage(address, &um)
+		if err != nil {
+			c.log("encModelReceived: handleEncryptedMessage failed:", err.Error())
+		}
+	}
 	for _, create := range created {
 		log.Println("FOREIGN CREATED", create)
+		um := shared.CreateUpdateMessage(shared.OpCreate, foreignObjs[create])
+		wg.Add(1)
+		go apply(um)
 	}
 	for _, remains := range remained {
 		log.Println("FOREIGN REMAINED", remains)
+		// get local stin
+		stin, exists := c.tin.model.StaticInfos[remains]
+		if !exists {
+			c.warn("encModelReceived: object for modify check not found!")
+			continue
+		}
+		// check if we must apply a modify
+		if stin.Version.Includes(foreignObjs[remains].Version) {
+			continue
+		}
+		um := shared.CreateUpdateMessage(shared.OpModify, foreignObjs[remains])
+		wg.Add(1)
+		go apply(um)
 	}
 	for _, remove := range removed {
 		log.Println("FOREIGN REMOVED", remove)
+		// for remove we must use local object as no foreign one exists
+		relPath := shared.CreatePath(c.tin.Path, remove)
+		obj, err := c.tin.model.GetInfo(relPath)
+		if err != nil {
+			c.warn("encModelReceived: object for removal not found:", err.Error())
+			continue
+		}
+		um := shared.CreateUpdateMessage(shared.OpRemove, *obj)
+		wg.Add(1)
+		go apply(um)
 	}
+	// wait until everything has been applied
+	wg.Wait()
+	log.Println("DEBUG: completed sync to local, now syncing encrypted")
 	// STEP TWO: get difference that must be UPLOADED to foreign to make it equal to THIS
 	created, remained, removed = shared.Difference(foreignPaths, c.tin.model.TrackedPaths)
+	// if no differences, we can immediately unlock and release the encryted peer
+	if len(created) == 0 && len(remained) == 0 && len(removed) == 0 {
+		log.Println("DEBUG: no changes to unlock, releasing immediately")
+		_, exists := c.tin.peers[address]
+		if !exists {
+			c.warn("encModelReceived: failed to preemptively release peer, doesn't exist!")
+			// just return, may release later or timout
+			return
+		}
+		ulm := shared.CreateLockMessage(shared.LoRelease)
+		c.tin.channel.Send(address, ulm.JSON())
+		c.tin.peers[address].SetLocked(false)
+		// and done so return
+		return
+	}
 	// for each path: check and create messages accordingly
 	for _, create := range created {
 		stin, exists := c.tin.model.StaticInfos[create]
@@ -320,9 +374,7 @@ func (c *chaninterface) encModelReceived(address, path string) {
 
 /*
 handleEncryptedMessage looks at the message, fetches files if required, and correctly
-applies it to the model.
-
-TODO handle how we update the encrypted peer – upload created and modified files, remove deleted files.
+applies it to the model. NOTE: blocks until file transfer has been applied or failed.
 */
 func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.UpdateMessage) error {
 	// use check message to prepare message and check for special cases
