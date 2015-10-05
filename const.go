@@ -23,6 +23,7 @@ const (
 )
 
 var (
+	errAuthMissingNonce    = errors.New("encrypted too short to start with nonce")
 	errAuthEncryption      = errors.New("encryption failed")
 	errAuthDecryption      = errors.New("decryption failed")
 	errAuthInvalidKeys     = errors.New("keys are invalid")

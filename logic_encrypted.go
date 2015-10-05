@@ -53,9 +53,6 @@ func (c *chaninterface) onEncryptedMessage(address string, msgType shared.MsgTyp
 /*
 onEncLockMessage handles lock messages. Notably it requests a model on a
 successful lock, starting a synchronization.
-
-FIXME: peer never sends a release request to locked encrypted peers! For now we
-just await the timeout... TODO
 */
 func (c *chaninterface) onEncLockMessage(address string, msg shared.LockMessage) {
 	switch msg.Action {
@@ -197,6 +194,7 @@ func (c *chaninterface) sendCompletePushes(address string) {
 	// start by sending push for model
 	pm = shared.CreatePushMessage(shared.IDMODEL, shared.OtModel)
 	c.tin.channel.Send(address, pm.JSON())
+	// then send a push for every file (not directories)
 	for path, stin := range c.tin.model.StaticInfos {
 		// if directory, skip
 		if stin.Directory {
@@ -211,9 +209,6 @@ func (c *chaninterface) sendCompletePushes(address string) {
 encModelReceived is called when a model is received from an encrypted peer. It
 triggers the complete sync with the encrypted state, concluding with updating
 the encrypted peer to be up to date with this peer.
-
-NOTE: this is a long method because it blocks until ALL operations required for
-the complete model sync have completed. FIXME: make this work better.
 */
 func (c *chaninterface) encModelReceived(address, path string) {
 	// no matter what: remove temp file

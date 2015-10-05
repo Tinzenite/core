@@ -48,16 +48,14 @@ func Test_Challenge(t *testing.T) {
 	data := make([]byte, binary.MaxVarintLen64)
 	_ = binary.PutVarint(data, number)
 	// log.Println("GOLANG DEBUG: Size says we need", binary.Size(number), "bytes, but actually wrote", written, "!")
-	// get a nonce
-	nonce := auth.createNonce()
 	// encrypt number with nonce
-	encrypted, err := auth.Encrypt(data, nonce)
+	encrypted, err := auth.Encrypt(data)
 	if err != nil {
 		t.Fatal("Expected no errors:", err)
 	}
 	// <-> ANSWER CHALLENGE <->
 	// decrypt
-	decrypted, err := auth.Decrypt(encrypted, nonce)
+	decrypted, err := auth.Decrypt(encrypted)
 	if err != nil {
 		t.Fatal("Expected no errors:", err)
 	}
@@ -105,10 +103,9 @@ func Benchmark_Auth_Encrypt(b *testing.B) {
 	if err != nil {
 		b.Fatal("Couldn't build auth:", err)
 	}
-	nonce := auth.createNonce()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		enc, err := auth.Encrypt([]byte("Add some random test here for now."), nonce)
+		enc, err := auth.Encrypt([]byte("Add some random test here for now."))
 		if err != nil {
 			b.Error("Failed to encrypt:", err)
 		}
@@ -122,14 +119,13 @@ func Benchmark_Auth_Decrypt(b *testing.B) {
 		b.Fatal("Couldn't build auth:", err)
 	}
 	data := []byte("Add some random test here for now.")
-	nonce := auth.createNonce()
-	enc, err := auth.Encrypt(data, nonce)
+	enc, err := auth.Encrypt(data)
 	if err != nil {
 		b.Fatal("Couldn't encrypt:", err)
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		clear, err := auth.Decrypt(enc, nonce)
+		clear, err := auth.Decrypt(enc)
 		if err != nil {
 			b.Error("Failed to decrypt:", err)
 		}

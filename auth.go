@@ -85,12 +85,6 @@ func createAuthentication(path, dirname, username, password string) (*Authentica
 	if err != nil {
 		return nil, err
 	}
-	// Make a new secure key:
-	data := make([]byte, shared.KEYLENGTH)
-	_, err = rand.Read(data)
-	if err != nil {
-		return nil, err
-	}
 	// build authentication object
 	auth := &Authentication{
 		User:         string(userhash),
@@ -121,25 +115,46 @@ func (a *Authentication) StoreTo(path string) error {
 /*
 Encrypt returns the data in encrypted form, given that the keys are valid.
 */
-func (a *Authentication) Encrypt(data []byte, nonce *[24]byte) ([]byte, error) {
+func (a *Authentication) Encrypt(data []byte) ([]byte, error) {
 	if a.private == nil || a.public == nil {
 		return nil, errAuthInvalidKeys
 	}
 	// byte array to write encrypted data to
 	var encrypted []byte
-	return box.Seal(encrypted, data, nonce, a.public, a.private), nil
+	complete := make([]byte, 24)
+	// build a nonce
+	nonce := a.createNonce()
+	// write it to the start of encrypted
+	for i, value := range nonce {
+		complete[i] = value
+	}
+	// encrypt
+	encrypted = box.Seal(encrypted, data, nonce, a.public, a.private)
+	// append encrypted to complete
+	complete = append(complete, encrypted...)
+	return complete, nil
 }
 
 /*
 Decrypt returns the unencrypted data, given that the keys are valid.
 */
-func (a *Authentication) Decrypt(encrypted []byte, nonce *[24]byte) ([]byte, error) {
+func (a *Authentication) Decrypt(encrypted []byte) ([]byte, error) {
 	if a.private == nil || a.public == nil {
 		return nil, errAuthInvalidKeys
 	}
+	// ensure that a nonce is included
+	if len(encrypted) <= 24 {
+		return nil, errAuthMissingNonce
+	}
+	// read nonce
+	nonce := new([24]byte)
+	for i := range nonce {
+		nonce[i] = encrypted[i]
+	}
 	// byte array to write data to
 	var data []byte
-	data, ok := box.Open(data, encrypted, nonce, a.public, a.private)
+	// note: encrypted is only read from the nonce onwards
+	data, ok := box.Open(data, encrypted[24:], nonce, a.public, a.private)
 	if !ok {
 		return nil, errAuthDecryption
 	}
@@ -154,15 +169,13 @@ func (a *Authentication) BuildAuthentication(number int64) (*shared.Authenticati
 	// convert to data payload
 	data := make([]byte, binary.MaxVarintLen64)
 	_ = binary.PutVarint(data, number)
-	// get a nonce
-	nonce := a.createNonce()
 	// encrypt number with nonce
-	encrypted, err := a.Encrypt(data, nonce)
+	encrypted, err := a.Encrypt(data)
 	if err != nil {
 		return nil, err
 	}
 	// write encrypted and nonce to message
-	msg := shared.CreateAuthenticationMessage(encrypted, nonce)
+	msg := shared.CreateAuthenticationMessage(encrypted)
 	return &msg, nil
 }
 
@@ -171,7 +184,7 @@ ReadAuthentication takes an AuthenticationMessage and decrypts it to return the
 contained number.
 */
 func (a *Authentication) ReadAuthentication(msg *shared.AuthenticationMessage) (int64, error) {
-	data, err := a.Decrypt(msg.Encrypted, msg.Nonce)
+	data, err := a.Decrypt(msg.Encrypted)
 	if err != nil {
 		return 0, err
 	}
