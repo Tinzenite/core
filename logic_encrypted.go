@@ -19,7 +19,6 @@ the message according to its type.
 TODO describe order of operations (successful lock -> request model -> sync -> push / pull difference)
 */
 func (c *chaninterface) onEncryptedMessage(address string, msgType shared.MsgType, message string) {
-	// TODO switch and handle messages NOTE FIXME implement
 	switch msgType {
 	case shared.MsgLock:
 		msg := &shared.LockMessage{}
@@ -99,6 +98,7 @@ func (c *chaninterface) onEncNotifyMessage(address string, msg shared.NotifyMess
 		// TODO: if object --> error... maybe "reset" the encrypted peer?
 		log.Println("DEBUG: object missing!", msg.Identification, msg.Notify)
 		log.Println("DEBUG: TODO: reset encrypted peer?")
+		// TODO implement an enc check method
 	default:
 		c.warn("Unknown notify type received:", msg.Notify.String())
 	}
@@ -158,16 +158,13 @@ func (c *chaninterface) encSendFile(address, identification, path string, ot sha
 		return
 	}
 	// encrypt here as long as not auth AND not peer
-	/*
-		TODO enable encryption once everything works
-		if ot != shared.OtAuth && ot != shared.OtPeer {
-			data, err = c.tin.auth.Encrypt(data)
-			if err != nil {
-				c.warn("Failed to encrypt data!", err.Error())
-				return
-			}
+	if ot != shared.OtAuth && ot != shared.OtPeer {
+		data, err = c.tin.auth.Encrypt(data)
+		if err != nil {
+			c.warn("Failed to encrypt data!", err.Error())
+			return
 		}
-	*/
+	}
 	// write to temp file
 	sendPath := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.SENDINGDIR + "/" + identification
 	err = ioutil.WriteFile(sendPath, data, shared.FILEPERMISSIONMODE)
@@ -233,8 +230,12 @@ func (c *chaninterface) encModelReceived(address, path string) {
 		c.log("encModelReceived: failed to read received model file:", err.Error())
 		return
 	}
-	// TODO decrypt file!
-	// log.Println("DEBUG: TODO: decrypt model here!")
+	// decrypt model
+	data, err = c.tin.auth.Decrypt(data)
+	if err != nil {
+		c.warn("encModelReceived: failed to decrypt model!", err.Error())
+		return
+	}
 	// unmarshal
 	foreignModel := &shared.ObjectInfo{}
 	err = json.Unmarshal(data, foreignModel)
@@ -262,8 +263,10 @@ func (c *chaninterface) encModelReceived(address, path string) {
 /*
 handleEncryptedMessage looks at the message, fetches files if required, and correctly
 applies it to the model. NOTE: blocks until file transfer has been applied or failed.
+
+TODO what happens when fetching peers and auth? must NOT be decrypted!
 */
-func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.UpdateMessage) error {
+func (c *chaninterface) handleEncryptedMessage(address string, ot shared.ObjectType, msg *shared.UpdateMessage) error {
 	// use check message to prepare message and check for special cases
 	msg, err := c.tin.model.CheckMessage(msg)
 	// if update known --> ignore it
@@ -290,20 +293,42 @@ func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.Updat
 	op := msg.Operation
 	// create and modify must first fetch the file
 	if op == shared.OpCreate || op == shared.OpModify {
-		rm := shared.CreateRequestMessage(shared.OtObject, msg.Object.Identification)
+		rm := shared.CreateRequestMessage(ot, msg.Object.Identification)
 		var wg sync.WaitGroup
 		wg.Add(1)
 		c.requestFile(address, rm, func(address, path string) {
 			// force calling function to wait until this has been handled
 			defer func() { wg.Done() }()
 			// rename to correct name for model
-			err := os.Rename(path, c.temppath+"/"+rm.Identification)
+			tempLocation := c.temppath + "/" + rm.Identification
+			err := os.Rename(path, tempLocation)
 			if err != nil {
 				c.log("Failed to move file to temp: " + err.Error())
 				return
 			}
-			// TODO decrypt file!
-			// log.Println("DEBUG: TODO: decrypt file here!")
+			if ot != shared.OtPeer && ot != shared.OtAuth {
+				// read data
+				data, err := ioutil.ReadFile(tempLocation)
+				if err != nil {
+					c.warn("Failed to read file for decryption!", err.Error())
+					os.Remove(tempLocation)
+					return
+				}
+				// decrypt file
+				data, err = c.tin.auth.Decrypt(data)
+				if err != nil {
+					c.warn("Failed to decrypt file:", err.Error())
+					os.Remove(tempLocation)
+					return
+				}
+				// write data to file
+				err = ioutil.WriteFile(tempLocation, data, shared.FILEPERMISSIONMODE)
+				if err != nil {
+					c.warn("Failed to write decrypted data to file:", err.Error())
+					os.Remove(tempLocation)
+					return
+				}
+			}
 			// apply
 			err = c.mergeUpdate(*msg)
 			if err != nil {
@@ -336,7 +361,8 @@ func (c *chaninterface) encApplyPeer(address string, foreignPaths map[string]boo
 	apply := func(um shared.UpdateMessage) {
 		defer func() { wg.Done() }() // no matter what unlock sync
 		log.Println("DEBUG: doing", um.Operation, "for", um.Object.Path)
-		err := c.handleEncryptedMessage(address, &um)
+		ot := c.determineObjectTypeBy(um.Object.Path)
+		err := c.handleEncryptedMessage(address, ot, &um)
 		if err != nil {
 			c.log("encApplyPeer: handleEncryptedMessage: failed:", err.Error())
 		}
@@ -475,6 +501,16 @@ encSendPush sends a PushMessage for the given parameters, setting the ObjType
 according to the path.
 */
 func (c *chaninterface) encSendPush(address, path, identification string) {
+	ot := c.determineObjectTypeBy(path)
+	pm := shared.CreatePushMessage(identification, ot)
+	c.tin.channel.Send(address, pm.JSON())
+}
+
+/*
+determineObjectTypeBy is a small and ugly helper function used to flag when and
+when not to decrypt in logic_encrypted.go.
+*/
+func (c *chaninterface) determineObjectTypeBy(path string) shared.ObjectType {
 	peerDir := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR
 	authPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.AUTHJSON
 	// default object type is OtObject
@@ -487,6 +523,5 @@ func (c *chaninterface) encSendPush(address, path, identification string) {
 	if path == authPath {
 		objectType = shared.OtAuth
 	}
-	pm := shared.CreatePushMessage(identification, objectType)
-	c.tin.channel.Send(address, pm.JSON())
+	return objectType
 }
