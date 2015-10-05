@@ -157,8 +157,17 @@ func (c *chaninterface) encSendFile(address, identification, path string, ot sha
 		c.warn("Failed to read data:", err.Error())
 		return
 	}
-	// TODO encrypt here? FIXME
-	// log.Println("DEBUG: encrypt here")
+	// encrypt here as long as not auth AND not peer
+	/*
+		TODO enable encryption once everything works
+		if ot != shared.OtAuth && ot != shared.OtPeer {
+			data, err = c.tin.auth.Encrypt(data)
+			if err != nil {
+				c.warn("Failed to encrypt data!", err.Error())
+				return
+			}
+		}
+	*/
 	// write to temp file
 	sendPath := c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.SENDINGDIR + "/" + identification
 	err = ioutil.WriteFile(sendPath, data, shared.FILEPERMISSIONMODE)
@@ -169,7 +178,7 @@ func (c *chaninterface) encSendFile(address, identification, path string, ot sha
 	// send file
 	err = c.tin.channel.SendFile(address, sendPath, identification, func(success bool) {
 		if !success {
-			c.log("Failed to upload file!", ot.String(), identification)
+			c.log("encSendFile: Failed to upload file!", ot.String(), identification)
 		}
 		// remove sending temp file always
 		err := os.Remove(sendPath)
