@@ -337,7 +337,7 @@ func (c *chaninterface) encApplyPeer(address string, foreignPaths map[string]boo
 	// all updates are applied with the same function, so reuse it
 	apply := func(um shared.UpdateMessage) {
 		defer func() { wg.Done() }() // no matter what unlock sync
-		log.Println("DEBUG: fetching", um.Object.Path, "as", um.Operation)
+		log.Println("DEBUG: doing", um.Operation, "for", um.Object.Path)
 		err := c.handleEncryptedMessage(address, &um)
 		if err != nil {
 			c.log("encApplyPeer: handleEncryptedMessage: failed:", err.Error())
@@ -375,6 +375,8 @@ func (c *chaninterface) encApplyPeer(address string, foreignPaths map[string]boo
 		}
 		// check if actually removed
 		if !c.tin.model.IsRemoved(obj.Identification) {
+			// if not this just means that enc doesn't know of a new object yet
+			log.Println("DEBUG: encrypted doesn't know of", remove)
 			continue
 		}
 		// if not update as removal
@@ -428,6 +430,7 @@ func (c *chaninterface) encApplyLocal(address string, foreignPaths map[string]bo
 			c.warn("encApplyLocal: missing stin for locally held object!")
 			continue
 		}
+		// if dir ignore
 		if stin.Directory {
 			continue
 		}
@@ -459,6 +462,9 @@ func (c *chaninterface) encApplyLocal(address string, foreignPaths map[string]bo
 		nm := shared.CreateNotifyMessage(shared.NoRemoved, stin.Identification)
 		c.tin.channel.Send(address, nm.JSON())
 	}
+	// and don't forget: update the model too!
+	pm := shared.CreatePushMessage(shared.IDMODEL, shared.OtModel)
+	c.tin.channel.Send(address, pm.JSON())
 	// and done
 }
 
