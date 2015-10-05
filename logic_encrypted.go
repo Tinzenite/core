@@ -272,8 +272,6 @@ func (c *chaninterface) handleEncryptedMessage(address string, msg *shared.Updat
 	}
 	// if encrypted has a removal that we have registered as done, remove it
 	if err == model.ErrObjectRemovalDone {
-		log.Println("DEBUG: remove removal from encrypted.", msg.String())
-		// TODO what exactly do I have to tell encrypted to remove? FIXME
 		nm := shared.CreateNotifyMessage(shared.NoRemoved, msg.Object.Identification)
 		c.tin.channel.Send(address, nm.JSON())
 		// done
@@ -344,6 +342,10 @@ func (c *chaninterface) encApplyPeer(address string, foreignPaths map[string]boo
 		}
 	}
 	for _, create := range created {
+		// make sure not to try to create locally removed objects
+		if c.tin.model.IsRemoved(foreignObjs[create].Identification) {
+			continue
+		}
 		um := shared.CreateUpdateMessage(shared.OpCreate, foreignObjs[create])
 		wg.Add(1)
 		go apply(um)
@@ -376,7 +378,6 @@ func (c *chaninterface) encApplyPeer(address string, foreignPaths map[string]boo
 		// check if actually removed
 		if !c.tin.model.IsRemoved(obj.Identification) {
 			// if not this just means that enc doesn't know of a new object yet
-			log.Println("DEBUG: encrypted doesn't know of", remove)
 			continue
 		}
 		// if not update as removal
@@ -459,6 +460,7 @@ func (c *chaninterface) encApplyLocal(address string, foreignPaths map[string]bo
 			continue
 		}
 		log.Println("Send notify for removal of", remove)
+		// TODO we may need more info than just the ID (peers?)
 		nm := shared.CreateNotifyMessage(shared.NoRemoved, stin.Identification)
 		c.tin.channel.Send(address, nm.JSON())
 	}
