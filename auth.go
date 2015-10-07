@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"hash/fnv"
 	"io/ioutil"
-	"log"
 	unsecure "math/rand"
 
 	"github.com/tinzenite/shared"
@@ -20,14 +19,13 @@ import (
 Authentication file.
 */
 type Authentication struct {
-	User         string    // hash of username
-	Dirname      string    // official name of directory
-	DirID        string    // random id of directory
-	PasswordHash []byte    // hash to check password against
-	Secure       []byte    // box encrypted private and public keys with password
-	Nonce        *[24]byte // nonce for Secure
-	private      *[32]byte // private key if unlocked
-	public       *[32]byte // public key if unlocked
+	User    string    // hash of username
+	Dirname string    // official name of directory
+	DirID   string    // random id of directory
+	Secure  []byte    // box encrypted private and public keys with password
+	Nonce   *[24]byte // nonce for Secure
+	private *[32]byte // private key if unlocked
+	public  *[32]byte // public key if unlocked
 }
 
 type staticRandom struct {
@@ -55,13 +53,7 @@ func loadAuthenticationFrom(path string, password string) (*Authentication, erro
 	if err != nil {
 		return nil, err
 	}
-	// Bcrypt check password
-	err = bcrypt.CompareHashAndPassword(auth.PasswordHash, []byte(password))
-	if err != nil {
-		// doesn't match!
-		return nil, err
-	}
-	// IF the password was valid we use it to init the cipher
+	// use the password to init the cipher
 	err = auth.loadCrypto(password)
 	if err != nil {
 		return nil, err
@@ -80,17 +72,11 @@ func createAuthentication(path, dirname, username, password string) (*Authentica
 	if err != nil {
 		return nil, err
 	}
-	// Bcrypt password
-	passhash, err := bcrypt.GenerateFromPassword([]byte(password), 10)
-	if err != nil {
-		return nil, err
-	}
 	// build authentication object
 	auth := &Authentication{
-		User:         string(userhash),
-		Dirname:      dirname,
-		DirID:        id,
-		PasswordHash: passhash}
+		User:    string(userhash),
+		Dirname: dirname,
+		DirID:   id}
 	// use password to build keys for encryption
 	err = auth.createCrypto(password)
 	if err != nil {
@@ -208,9 +194,8 @@ func (a *Authentication) loadCrypto(password string) error {
 	// unlock enc keys
 	var data []byte
 	data, ok := box.Open(data, a.Secure, a.Nonce, lockPub, lockPriv)
-	// TODO I think this means the keys aren't ok, which means wrong password:
+	// this means the password was wrong in our case
 	if !ok {
-		log.Println("DEBUG: does this error mean that the wrong password was used to decrypt?")
 		return errAuthInvalidPassword
 	}
 	// check if data is as expected
