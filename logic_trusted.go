@@ -230,8 +230,7 @@ func (c *chaninterface) handleTrustedMessage(address string, msg *shared.UpdateM
 	}
 	// --> IF CheckMessage was ok, we can now handle applying the message
 	// if a transfer was previously in progress, cancel it as we need the newer one
-	key := c.buildKey(address, msg.Object.Identification)
-	_, exists := c.inTransfers[key]
+	_, exists := c.inTransfers[msg.Object.Identification]
 	if exists {
 		path := c.recpath + "/" + address + "." + msg.Object.Identification
 		err := c.tin.channel.CancelFileTransfer(path)
@@ -240,7 +239,7 @@ func (c *chaninterface) handleTrustedMessage(address string, msg *shared.UpdateM
 			return err
 		}
 		// remove transfer
-		delete(c.inTransfers, key)
+		delete(c.inTransfers, msg.Object.Identification)
 		// remove file if no error
 		_ = os.Remove(path)
 		// done with old one, so continue handling the new update

@@ -86,7 +86,7 @@ func (c *chaninterface) onEncNotifyMessage(address string, msg shared.NotifyMess
 	switch msg.Notify {
 	case shared.NoMissing:
 		// remove transfer as no file will come
-		delete(c.inTransfers, c.buildKey(address, msg.Identification))
+		delete(c.inTransfers, msg.Identification)
 		// if model --> create it
 		if msg.Identification == shared.IDMODEL {
 			// log that encrypted was empty and that we'll just upload our current state

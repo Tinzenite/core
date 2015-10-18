@@ -6,12 +6,9 @@ import "time"
 transfer is a structure for keeping track of active in transfers.
 */
 type transfer struct {
-	// last time this transfer was updated for timeout reasons
-	updated time.Time
-	// peers stores the addresses of all known peers that have the file update
-	peers []string
-	// function to execute once the file has been received
-	done onDone
+	updated time.Time // last time this transfer was updated for timeout reasons
+	active  string    // active stores the address of the peer from which we're fetching the file
+	done    onDone    // function to execute once the file has been received
 }
 
 /*

@@ -46,20 +46,19 @@ OnAllowFile is the callback that checks whether the transfer is to be accepted o
 not. Checks the address and identification of the object against c.transfers.
 */
 func (c *chaninterface) OnAllowFile(address, identification string) (bool, string) {
-	key := c.buildKey(address, identification)
-	tran, exists := c.inTransfers[key]
+	tran, exists := c.inTransfers[identification]
 	if !exists {
 		c.log("Transfer not authorized for", identification, "!")
 		return false, ""
 	}
-	if !shared.Contains(tran.peers, address) {
+	if tran.active != address {
 		c.log("Peer not authorized for transfer!")
 		return false, ""
 	}
 	// check timeout
 	if time.Since(tran.updated) > transferTimeout {
 		// c.log("Transfer timed out!")
-		delete(c.inTransfers, key)
+		delete(c.inTransfers, identification)
 		return false, ""
 	}
 	// here accept transfer
@@ -85,9 +84,8 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 		return
 	}
 	/*TODO check request if file is delta / must be decrypted before applying to model*/
-	// get tran with key
-	key := c.buildKey(address, identification)
-	tran, exists := c.inTransfers[key]
+	// get tran
+	tran, exists := c.inTransfers[identification]
 	if !exists {
 		c.log("Transfer doesn't even exist anymore! Something bad went wrong...")
 		// remove from transfers
@@ -100,7 +98,7 @@ func (c *chaninterface) OnFileReceived(address, path, filename string) {
 		return
 	}
 	// remove transfer
-	delete(c.inTransfers, key)
+	delete(c.inTransfers, identification)
 	// move from receiving to temp
 	err := os.Rename(c.recpath+"/"+filename, c.temppath+"/"+filename)
 	if err != nil {
@@ -126,9 +124,8 @@ func (c *chaninterface) OnFileCanceled(address, path string) {
 		c.warn("OnFileCanceled: can not delete transfer: index out of range!")
 		return
 	}
-	// the last index string is the identification, so we can build the key
-	key := c.buildKey(address, list[index])
-	delete(c.inTransfers, key)
+	// the last index string is the identification, so we can delete the transfer
+	delete(c.inTransfers, list[index])
 }
 
 /*
@@ -295,11 +292,9 @@ identification is what it will be named in transfer, and the function will be
 called once the send was successful.
 */
 func (c *chaninterface) sendFile(address, path, identification string, f channel.OnDone) error {
-	// key for keeping track of running transfers
-	key := c.buildKey(address, identification)
 	// we must wrap the function, even if none was given because we'll need to remove the outTransfers
 	newFunction := func(success bool) {
-		delete(c.outTransfers, key)
+		delete(c.outTransfers, identification)
 		// remember to call the callback
 		if f != nil {
 			f(success)
@@ -309,42 +304,58 @@ func (c *chaninterface) sendFile(address, path, identification string, f channel
 		}
 	}
 	// if it already exists, don't restart a new one!
-	_, exists := c.outTransfers[key]
+	_, exists := c.outTransfers[identification]
 	if exists {
 		// receiving side must restart if it so wants to, we'll just keep sending the original one
 		return errors.New("out transfer already exists, will not resend")
 	}
 	// write that the transfer is happening
-	c.outTransfers[key] = true
+	c.outTransfers[identification] = true
 	// now call with overwritten function
 	return c.tin.channel.SendFile(address, path, identification, newFunction)
 }
 
 /*
 requestFile requests the given request from the address and executes the function
-when the transfer was successful or not. NOTE: only f may be nil.
+when the transfer was successful. NOTE: only f may be nil.
 */
 func (c *chaninterface) requestFile(address string, rm shared.RequestMessage, f onDone) error {
-	// build key
-	key := c.buildKey(address, rm.Identification)
-	if tran, exists := c.inTransfers[key]; exists {
-		if time.Since(tran.updated) > transferTimeout {
-			c.log("Retransmiting transfer due to timeout.")
-			// update
-			tran.updated = time.Now()
-			c.inTransfers[key] = tran
-			// retransmit
-			return c.tin.channel.Send(address, rm.JSON())
+	// for all current transfers
+	for identification, trans := range c.inTransfers {
+		// skip if not wanted transfer
+		if identification != rm.Identification {
+			continue
 		}
-		c.log("Ignoring multiple request for", rm.Identification)
+		// if transfer is being served from same address as the new request is sent
+		if trans.active == address {
+			// check for timeout for retransmit
+			if time.Since(trans.updated) > transferTimeout {
+				c.log("Retransmiting transfer due to timeout.")
+				// update
+				trans.updated = time.Now()
+				c.inTransfers[identification] = trans
+				// retransmit and done
+				return c.tin.channel.Send(address, rm.JSON())
+			}
+			// if not yet time for retransmit ignore
+			c.log("Ignoring multiple request for", identification, ".")
+			// and return nil
+			return nil
+		}
+		// if different address we shouldn't request it from somewhere else too
+		c.log("Already fetching file", identification, "from other peer, ignoring!")
+		/* TODO: add peer address to available peers to fetch update from for
+		fall back purposes. NOTE that we should check if its for the same version
+		of the object however - if not, replace it with more current version. */
+		// and return nil
 		return nil
 	}
-	// create new transfer
+	// if transfer doesn't exist for identification, create it (and ONLY then create it)
 	tran := transfer{
 		updated: time.Now(),
-		peers:   []string{address},
+		active:  address,
 		done:    f}
-	c.inTransfers[key] = tran
+	c.inTransfers[rm.Identification] = tran
 	// request file from peer
 	return c.tin.channel.Send(address, rm.JSON())
 }
@@ -362,13 +373,6 @@ func (c *chaninterface) mergeUpdate(msg shared.UpdateMessage) error {
 	}
 	// if merge error --> merge
 	return c.tin.merge(&msg)
-}
-
-/*
-buildKey builds a unique string value for the given parameters.
-*/
-func (c *chaninterface) buildKey(address string, identification string) string {
-	return address + ":" + identification
 }
 
 /*
