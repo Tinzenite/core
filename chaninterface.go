@@ -162,20 +162,23 @@ process if applicable to clean existing authentication from previous connects.
 */
 func (c *chaninterface) OnConnected(address string) {
 	c.log(address[:8], "came online!")
-	// we must only reset this if peer is trusted
-	trusted, _ := c.tin.isPeerTrusted(address)
-	if !trusted {
-		return
-	}
-	// check if we can validly access it
-	_, exists := c.tin.peers[address]
-	if !exists {
-		c.warn("Peer not found, can not reset authorization!")
-		return
-	}
-	// otherwise fetch and set auth to false
-	c.log("Resetting authorization for trusted peer.")
-	c.tin.peers[address].SetAuthenticated(false)
+	// FIXME: resetting auth prevents trusted bootstrap.
+	/*
+		// we must only reset this if peer is trusted
+		trusted, _ := c.tin.isPeerTrusted(address)
+		if !trusted {
+			return
+		}
+		// check if we can validly access it
+		_, exists := c.tin.peers[address]
+		if !exists {
+			c.warn("Peer not found, can not reset authorization!")
+			return
+		}
+		// otherwise fetch and set auth to false
+		c.log("Resetting authorization for trusted peer.")
+		c.tin.peers[address].SetAuthenticated(false)
+	*/
 }
 
 /*
