@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/tinzenite/channel"
 	"github.com/tinzenite/model"
 	"github.com/tinzenite/shared"
 )
@@ -120,7 +121,7 @@ func (c *chaninterface) onTrustedRequestModelMessage(address string, msg shared.
 		return
 	}
 	// need to remove temp independent of whether success or not
-	removeTemp := func(success bool) {
+	removeTemp := func(status channel.State) {
 		err := os.Remove(c.tin.Path + "/" + shared.TINZENITEDIR + "/" + shared.TEMPDIR + "/" + filename)
 		if err != nil {
 			c.log("RemoveTemp:", err.Error())

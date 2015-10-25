@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/tinzenite/channel"
 	"github.com/tinzenite/model"
 	"github.com/tinzenite/shared"
 )
@@ -172,9 +173,9 @@ func (c *chaninterface) encSendFile(address, identification, path string, ot sha
 		c.warn("Failed to write (encrypted) data to sending file:", err.Error())
 		return
 	}
-	// send file
-	err = c.tin.channel.SendFile(address, sendPath, identification, func(success bool) {
-		if !success {
+	// get function for on completion of sending
+	onComplete := func(status channel.State) {
+		if status != channel.StSuccess {
 			c.log("encSendFile: Failed to upload file!", ot.String(), identification)
 		}
 		// remove sending temp file always
@@ -182,7 +183,9 @@ func (c *chaninterface) encSendFile(address, identification, path string, ot sha
 		if err != nil {
 			c.warn("Failed to remove sending file!", err.Error())
 		}
-	})
+	}
+	// send file
+	err = c.tin.channel.SendFile(address, sendPath, identification, onComplete)
 	if err != nil {
 		c.warn("Failed to send file:", err.Error())
 		return

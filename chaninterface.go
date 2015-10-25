@@ -294,14 +294,14 @@ sendFile sends the given file to the address. Path is where the file lies,
 identification is what it will be named in transfer, and the function will be
 called once the send was successful.
 */
-func (c *chaninterface) sendFile(address, path, identification string, f channel.OnDone) error {
+func (c *chaninterface) sendFile(address, path, identification string, f func(channel.State)) error {
 	// we must wrap the function, even if none was given because we'll need to remove the outTransfers
-	newFunction := func(success bool) {
+	newFunction := func(status channel.State) {
 		delete(c.outTransfers, identification)
 		// remember to call the callback
 		if f != nil {
-			f(success)
-		} else if !success {
+			f(status)
+		} else if status != channel.StSuccess {
 			// if no function was given still alert that send failed
 			log.Println("Transfer was not successful!", path)
 		}
