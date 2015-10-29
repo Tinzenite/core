@@ -220,7 +220,8 @@ func (c *chaninterface) handleTrustedMessage(address string, msg *shared.UpdateM
 	}
 	// if other side hasn't completed removal --> notify that we're done with it
 	if err == model.ErrObjectRemovalDone {
-		nm := shared.CreateNotifyMessage(shared.NoRemoved, msg.Object.Name)
+		ot := c.determineObjectTypeBy(msg.Object.Path)
+		nm := shared.CreateNotifyMessage(shared.NoRemoved, msg.Object.Name, ot)
 		c.tin.channel.Send(address, nm.JSON())
 		// done
 		return nil

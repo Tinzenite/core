@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/tinzenite/channel"
@@ -266,8 +265,6 @@ func (c *chaninterface) encModelReceived(address, path string) {
 /*
 handleEncryptedMessage looks at the message, fetches files if required, and correctly
 applies it to the model. NOTE: blocks until file transfer has been applied or failed.
-
-TODO what happens when fetching peers and auth? must NOT be decrypted!
 */
 func (c *chaninterface) handleEncryptedMessage(address string, ot shared.ObjectType, msg *shared.UpdateMessage) error {
 	// use check message to prepare message and check for special cases
@@ -278,7 +275,8 @@ func (c *chaninterface) handleEncryptedMessage(address string, ot shared.ObjectT
 	}
 	// if encrypted has a removal that we have registered as done, remove it
 	if err == model.ErrObjectRemovalDone {
-		nm := shared.CreateNotifyMessage(shared.NoRemoved, msg.Object.Identification)
+		ot := c.determineObjectTypeBy(msg.Object.Path)
+		nm := shared.CreateNotifyMessage(shared.NoRemoved, msg.Object.Identification, ot)
 		c.tin.channel.Send(address, nm.JSON())
 		// done
 		return nil
@@ -309,6 +307,7 @@ func (c *chaninterface) handleEncryptedMessage(address string, ot shared.ObjectT
 				c.log("Failed to move file to temp: " + err.Error())
 				return
 			}
+			// decrypt anything but peers and auth file (since they aren't encrypted)
 			if ot != shared.OtPeer && ot != shared.OtAuth {
 				// read data
 				data, err := ioutil.ReadFile(tempLocation)
@@ -489,8 +488,8 @@ func (c *chaninterface) encApplyLocal(address string, foreignPaths map[string]bo
 			continue
 		}
 		log.Println("Send notify for removal of", remove)
-		// TODO we may need more info than just the ID (peers?)
-		nm := shared.CreateNotifyMessage(shared.NoRemoved, stin.Identification)
+		ot := c.determineObjectTypeBy(stin.Path)
+		nm := shared.CreateNotifyMessage(shared.NoRemoved, stin.Identification, ot)
 		c.tin.channel.Send(address, nm.JSON())
 	}
 	// and don't forget: update the model too!
@@ -507,24 +506,4 @@ func (c *chaninterface) encSendPush(address, path, identification string) {
 	ot := c.determineObjectTypeBy(path)
 	pm := shared.CreatePushMessage(identification, ot)
 	c.tin.channel.Send(address, pm.JSON())
-}
-
-/*
-determineObjectTypeBy is a small and ugly helper function used to flag when and
-when not to decrypt in logic_encrypted.go.
-*/
-func (c *chaninterface) determineObjectTypeBy(path string) shared.ObjectType {
-	peerDir := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR
-	authPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.AUTHJSON
-	// default object type is OtObject
-	objectType := shared.OtObject
-	// if peer --> update objectType
-	if strings.HasPrefix(path, peerDir) {
-		objectType = shared.OtPeer
-	}
-	// if auth file --> update objectType
-	if path == authPath {
-		objectType = shared.OtAuth
-	}
-	return objectType
 }

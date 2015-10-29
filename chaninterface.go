@@ -153,7 +153,6 @@ func (c *chaninterface) OnFriendRequest(address, message string) {
 	go c.tin.peerValidation(address, peer.Trusted)
 	// NOTE the above go call works because the entire channel stuff runs in a
 	// permament go routine – as long as it runs all child routines will be called! :D
-	// TODO make use of this within channel itself!
 }
 
 /*
@@ -376,6 +375,26 @@ func (c *chaninterface) mergeUpdate(msg shared.UpdateMessage) error {
 	}
 	// if merge error --> merge
 	return c.tin.merge(&msg)
+}
+
+/*
+determineObjectTypeBy is a small and ugly helper function used to flag when and
+when not to decrypt in logic_encrypted.go.
+*/
+func (c *chaninterface) determineObjectTypeBy(path string) shared.ObjectType {
+	peerDir := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.PEERSDIR
+	authPath := shared.TINZENITEDIR + "/" + shared.ORGDIR + "/" + shared.AUTHJSON
+	// default object type is OtObject
+	objectType := shared.OtObject
+	// if peer --> update objectType
+	if strings.HasPrefix(path, peerDir) {
+		objectType = shared.OtPeer
+	}
+	// if auth file --> update objectType
+	if path == authPath {
+		objectType = shared.OtAuth
+	}
+	return objectType
 }
 
 /*
